@@ -44,7 +44,10 @@ type SuddenLog = {
   updatedAt: string;
 };
 
-type Screen = "home" | "daily" | "sudden" | "analysis" | "report";
+type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report";
+type RecordsTab = "daily" | "sudden";
+type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
+type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string };
 
 const dailyStorageKey = "self-compass-daily-records";
 const suddenStorageKey = "self-compass-sudden-logs";
@@ -68,46 +71,68 @@ function readStorage<T>(key: string): T[] {
   }
 }
 
+function loadDailyRecords() {
+  const records = readStorage<Partial<DailyRecord>>(dailyStorageKey).map(normalizeDailyRecord);
+  localStorage.setItem(dailyStorageKey, JSON.stringify(records));
+  return records;
+}
+
+function loadSuddenLogs() {
+  const logs = readStorage<Partial<SuddenLog>>(suddenStorageKey).map(normalizeSuddenLog);
+  localStorage.setItem(suddenStorageKey, JSON.stringify(logs));
+  return logs;
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(() => readStorage<DailyRecord>(dailyStorageKey));
-  const [suddenLogs, setSuddenLogs] = useState<SuddenLog[]>(() => readStorage<SuddenLog>(suddenStorageKey));
+  const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
+  const [suddenLogs, setSuddenLogs] = useState<SuddenLog[]>(loadSuddenLogs);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
+  const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [flash, setFlash] = useState("");
 
   const saveDaily = (record: DailyRecord) => {
-    const next = dailyRecords.some((item) => item.id === record.id)
+    const isEditing = dailyRecords.some((item) => item.id === record.id);
+    const next = isEditing
       ? dailyRecords.map((item) => (item.id === record.id ? record : item))
       : [record, ...dailyRecords];
     setDailyRecords(next);
     localStorage.setItem(dailyStorageKey, JSON.stringify(next));
     setEditingDaily(null);
-    setFlash("今日の記録を保存しました");
-    setScreen("home");
+    setFlash(isEditing ? "日々の記録を更新しました" : "今日の記録を保存しました");
+    setScreen(isEditing ? "records" : "home");
   };
 
   const saveSudden = (log: SuddenLog) => {
-    const next = suddenLogs.some((item) => item.id === log.id)
+    const isEditing = suddenLogs.some((item) => item.id === log.id);
+    const next = isEditing
       ? suddenLogs.map((item) => (item.id === log.id ? log : item))
       : [log, ...suddenLogs];
     setSuddenLogs(next);
     localStorage.setItem(suddenStorageKey, JSON.stringify(next));
     setEditingSudden(null);
-    setFlash("突発ログを保存しました");
-    setScreen("home");
+    setFlash(isEditing ? "突発ログを更新しました" : "突発ログを保存しました");
+    setScreen(isEditing ? "records" : "home");
   };
 
   const deleteDaily = (id: string) => {
     const next = dailyRecords.filter((record) => record.id !== id);
     setDailyRecords(next);
     localStorage.setItem(dailyStorageKey, JSON.stringify(next));
+    setDetailItem(null);
+    setPendingDelete(null);
+    setFlash("日々の記録を削除しました");
   };
 
   const deleteSudden = (id: string) => {
     const next = suddenLogs.filter((log) => log.id !== id);
     setSuddenLogs(next);
     localStorage.setItem(suddenStorageKey, JSON.stringify(next));
+    setDetailItem(null);
+    setPendingDelete(null);
+    setFlash("突発ログを削除しました");
   };
 
   return (
@@ -132,21 +157,45 @@ function App() {
         )}
         {screen === "daily" && <DailyForm key={editingDaily?.id || "new-daily"} initial={editingDaily} onSave={saveDaily} onCancel={() => setScreen("home")} />}
         {screen === "sudden" && <SuddenForm key={editingSudden?.id || "new-sudden"} initial={editingSudden} onSave={saveSudden} onCancel={() => setScreen("home")} />}
+        {screen === "records" && (
+          <RecordsScreen
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            flash={flash}
+            onDetail={setDetailItem}
+            onEditDaily={(record) => {
+              setFlash("");
+              setEditingDaily(record);
+              setScreen("daily");
+            }}
+            onEditSudden={(log) => {
+              setFlash("");
+              setEditingSudden(log);
+              setScreen("sudden");
+            }}
+            onDeleteDaily={(id) => setPendingDelete({ kind: "daily", id })}
+            onDeleteSudden={(id) => setPendingDelete({ kind: "sudden", id })}
+          />
+        )}
         {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} />}
         {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} />}
-
-        {screen === "daily" && (
-          <History title="日々の記録" records={dailyRecords} onEdit={(record) => setEditingDaily(record)} onDelete={deleteDaily} />
-        )}
-        {screen === "sudden" && (
-          <SuddenHistory records={suddenLogs} onEdit={(log) => setEditingSudden(log)} onDelete={deleteSudden} />
-        )}
       </main>
+      {detailItem && <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
+      {pendingDelete && (
+        <ConfirmDeleteModal
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            if (pendingDelete.kind === "daily") deleteDaily(pendingDelete.id);
+            if (pendingDelete.kind === "sudden") deleteSudden(pendingDelete.id);
+          }}
+        />
+      )}
       <nav className="bottom-nav" aria-label="主要ナビゲーション">
         {[
           ["home", "ホーム"],
           ["daily", "今日の記録"],
           ["sudden", "突発ログ"],
+          ["records", "記録一覧"],
           ["analysis", "分析"],
           ["report", "レポート"],
         ].map(([id, label]) => (
@@ -213,6 +262,107 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden }: { dailyRec
   );
 }
 
+function RecordsScreen({
+  dailyRecords,
+  suddenLogs,
+  flash,
+  onDetail,
+  onEditDaily,
+  onEditSudden,
+  onDeleteDaily,
+  onDeleteSudden,
+}: {
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  flash: string;
+  onDetail: (item: DetailItem) => void;
+  onEditDaily: (record: DailyRecord) => void;
+  onEditSudden: (log: SuddenLog) => void;
+  onDeleteDaily: (id: string) => void;
+  onDeleteSudden: (id: string) => void;
+}) {
+  const [tab, setTab] = useState<RecordsTab>("daily");
+  const sortedDaily = [...dailyRecords].sort((a, b) => b.date.localeCompare(a.date));
+  const sortedSudden = [...suddenLogs].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">見返す・直す・消す</p>
+          <h1>記録一覧</h1>
+        </div>
+      </header>
+      {flash && <div className="success-message">{flash}</div>}
+      <div className="tab-switch" role="tablist" aria-label="記録の種類">
+        <button className={tab === "daily" ? "selected" : ""} onClick={() => setTab("daily")} type="button">日々の記録</button>
+        <button className={tab === "sudden" ? "selected" : ""} onClick={() => setTab("sudden")} type="button">突発ログ</button>
+      </div>
+
+      {tab === "daily" && (
+        <div className="record-list">
+          {sortedDaily.length === 0 && <EmptyState text="まだ日々の記録がありません。まずは今日の状態を記録してみましょう。" />}
+          {sortedDaily.map((record) => (
+            <article className="record-card" key={record.id}>
+              <div className="record-card-head">
+                <div>
+                  <p className="label">記録日</p>
+                  <h2>{record.date}</h2>
+                </div>
+                <span className="badge">{record.weather}</span>
+              </div>
+              <div className="compact-metrics">
+                <Metric label="気分" value={`${record.mood}/10`} />
+                <Metric label="不安" value={`${record.anxiety}/10`} />
+                <Metric label="イライラ" value={`${record.irritability}/10`} />
+                <Metric label="疲労" value={`${record.fatigue}/10`} />
+                <Metric label="睡眠" value={`${record.sleepHours}h`} />
+              </div>
+              <p className="record-snippet"><strong>出来事:</strong> {shortText(record.events)}</p>
+              <p className="record-snippet"><strong>メモ:</strong> {shortText(record.memo)}</p>
+              <div className="card-actions">
+                <button className="secondary-action" onClick={() => onDetail({ kind: "daily", record })}>詳細</button>
+                <button className="secondary-action" onClick={() => onEditDaily(record)}>編集</button>
+                <button className="delete-action" onClick={() => onDeleteDaily(record.id)}>削除</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {tab === "sudden" && (
+        <div className="record-list">
+          {sortedSudden.length === 0 && <EmptyState text="まだ突発ログはありません。急な不調があったときに記録できます。" />}
+          {sortedSudden.map((log) => (
+            <article className="record-card" key={log.id}>
+              <div className="record-card-head">
+                <div>
+                  <p className="label">発生日時</p>
+                  <h2>{formatDateTime(log.occurredAt)}</h2>
+                </div>
+                <span className={log.riskLevel === "高" ? "badge danger" : "badge"}>危険度 {log.riskLevel}</span>
+              </div>
+              <div className="compact-metrics">
+                <Metric label="状態" value={log.stateType} />
+                <Metric label="強さ" value={`${log.intensity}/10`} />
+                <Metric label="場所" value={log.place} />
+                <Metric label="変化" value={log.afterChange} />
+              </div>
+              <p className="record-snippet"><strong>直前:</strong> {shortText(log.triggers.join("、"))}</p>
+              <p className="record-snippet"><strong>メモ:</strong> {shortText(log.memo)}</p>
+              <div className="card-actions">
+                <button className="secondary-action" onClick={() => onDetail({ kind: "sudden", record: log })}>詳細</button>
+                <button className="secondary-action" onClick={() => onEditSudden(log)}>編集</button>
+                <button className="delete-action" onClick={() => onDeleteSudden(log.id)}>削除</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DailyForm({ initial, onSave, onCancel }: { initial: DailyRecord | null; onSave: (record: DailyRecord) => void; onCancel: () => void }) {
   const [form, setForm] = useState<DailyRecord>(
     initial || {
@@ -239,7 +389,7 @@ function DailyForm({ initial, onSave, onCancel }: { initial: DailyRecord | null;
 
   return (
     <section>
-      <FormHead title="今日の記録" sub="その日全体の状態を記録します" onCancel={onCancel} />
+      <FormHead title={initial ? "記録を編集中" : "今日の記録"} sub="その日全体の状態を記録します" onCancel={onCancel} />
       <div className="form-card">
         <FormSection title="基本スコア">
           <label className="field">
@@ -299,7 +449,7 @@ function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; 
 
   return (
     <section>
-      <FormHead title="突発ログ" sub="急につらくなった瞬間だけを記録します" onCancel={onCancel} />
+      <FormHead title={initial ? "突発ログを編集中" : "突発ログ"} sub="急につらくなった瞬間だけを記録します" onCancel={onCancel} />
       {showDanger && <DangerNotice />}
       <div className="form-card">
         <FormSection title="まず記録">
@@ -510,6 +660,78 @@ function SuddenHistory({ records, onEdit, onDelete }: { records: SuddenLog[]; on
   );
 }
 
+function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void }) {
+  const rows =
+    item.kind === "daily"
+      ? [
+          ["記録日", item.record.date],
+          ["気分", `${item.record.mood}/10`],
+          ["不安度", `${item.record.anxiety}/10`],
+          ["イライラ度", `${item.record.irritability}/10`],
+          ["疲労度", `${item.record.fatigue}/10`],
+          ["睡眠時間", `${item.record.sleepHours}時間`],
+          ["睡眠の質", item.record.sleepQuality],
+          ["天気", item.record.weather],
+          ["食事", item.record.meal],
+          ["運動", item.record.exercise],
+          ["外出", item.record.wentOut],
+          ["人との接触", item.record.socialContact],
+          ["薬・サプリ", item.record.medicine],
+          ["今日の主な出来事", item.record.events || "未記入"],
+          ["今日のメモ", item.record.memo || "未記入"],
+        ]
+      : [
+          ["発生日時", formatDateTime(item.record.occurredAt)],
+          ["状態の種類", item.record.stateType],
+          ["強さ", `${item.record.intensity}/10`],
+          ["危険度", item.record.riskLevel],
+          ["直前にあったこと", item.record.triggers.join("、") || "未記入"],
+          ["場所", item.record.place],
+          ["身体症状", item.record.symptoms.join("、") || "未記入"],
+          ["頭に浮かんだ言葉・思考", item.record.thoughts || "未記入"],
+          ["実際に取った行動", item.record.actions.join("、") || "未記入"],
+          ["対処後の変化", item.record.afterChange],
+          ["メモ", item.record.memo || "未記入"],
+        ];
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="detail-modal">
+        <div className="modal-head">
+          <div>
+            <p className="eyebrow">{item.kind === "daily" ? "日々の記録" : "突発ログ"}</p>
+            <h2>詳細</h2>
+          </div>
+          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+        </div>
+        <div className="detail-list">
+          {rows.map(([label, value]) => (
+            <div className="detail-row" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDeleteModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="confirm-modal">
+        <h2>削除しますか？</h2>
+        <p>この記録を削除しますか？この操作は元に戻せません。</p>
+        <div className="confirm-actions">
+          <button className="secondary-action" onClick={onCancel}>キャンセル</button>
+          <button className="delete-action" onClick={onConfirm}>削除する</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FormHead({ title, sub, onCancel }: { title: string; sub: string; onCancel: () => void }) {
   return (
     <header className="page-head form-head">
@@ -686,6 +908,64 @@ function groupedAverage<T>(items: T[], keyer: (item: T) => string, valuer: (item
 
 function firstKey(items: [string, number][]) {
   return items[0]?.[0] || "記録なし";
+}
+
+function normalizeDailyRecord(record: Partial<DailyRecord>): DailyRecord {
+  const timestamp = record.createdAt || nowIso();
+  return {
+    id: record.id || newId(),
+    date: record.date || today(),
+    mood: record.mood ?? 5,
+    anxiety: record.anxiety ?? 5,
+    irritability: record.irritability ?? 5,
+    fatigue: record.fatigue ?? 5,
+    sleepHours: record.sleepHours ?? 7,
+    sleepQuality: record.sleepQuality || "普通",
+    weather: record.weather || "その他",
+    meal: record.meal || "普通",
+    exercise: record.exercise || "なし",
+    wentOut: record.wentOut || "なし",
+    socialContact: record.socialContact || "普通",
+    medicine: record.medicine || "該当なし",
+    events: record.events || "",
+    memo: record.memo || "",
+    createdAt: timestamp,
+    updatedAt: record.updatedAt || timestamp,
+  };
+}
+
+function normalizeSuddenLog(log: Partial<SuddenLog>): SuddenLog {
+  const timestamp = log.createdAt || nowIso();
+  return {
+    id: log.id || newId(),
+    occurredAt: log.occurredAt || nowIso(),
+    stateType: log.stateType || "強い不安",
+    intensity: log.intensity ?? 5,
+    riskLevel: log.riskLevel || "低",
+    triggers: log.triggers || [],
+    place: log.place || "自宅",
+    symptoms: log.symptoms || [],
+    thoughts: log.thoughts || "",
+    actions: log.actions || [],
+    afterChange: log.afterChange || "変わらない",
+    memo: log.memo || "",
+    createdAt: timestamp,
+    updatedAt: log.updatedAt || timestamp,
+  };
+}
+
+function shortText(text: string) {
+  if (!text) return "未記入";
+  return text.length > 42 ? `${text.slice(0, 42)}...` : text;
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 createRoot(document.getElementById("root")!).render(
