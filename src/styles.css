@@ -661,6 +661,26 @@ textarea {
   gap: 10px;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 0;
+  color: #354b44;
+  font-weight: 800;
+}
+
+.check-row input {
+  width: 22px;
+  height: 22px;
+  accent-color: #2f6658;
+}
+
+.modal-actions {
+  margin-top: 14px;
+}
+
 .home-follow-up {
   margin: 12px 0 0;
 }
