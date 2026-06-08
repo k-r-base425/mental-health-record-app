@@ -45,10 +45,32 @@ type SuddenLog = {
   updatedAt: string;
 };
 
-type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report" | "data";
+type SelfCareCategory = "体を整える" | "環境を整える" | "思考を整理する" | "人とつながる" | "休む" | "習慣を見直す";
+type SelfCareResult = "少し整った" | "変化は少なめ" | "今は合わなかった" | "後で振り返る";
+
+type SelfCarePlan = {
+  id: string;
+  title: string;
+  category: SelfCareCategory;
+  memo: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SelfCareLog = {
+  id: string;
+  planId: string;
+  title: string;
+  category: SelfCareCategory;
+  result: SelfCareResult;
+  memo: string;
+  createdAt: string;
+};
+
+type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report" | "data" | "selfcare";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
-type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "all" };
+type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "all" };
 type BackupData = {
   app: {
     name: string;
@@ -57,10 +79,14 @@ type BackupData = {
   };
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
+  selfCarePlans: SelfCarePlan[];
+  selfCareLogs: SelfCareLog[];
 };
 
 const dailyStorageKey = "self-compass-daily-records";
 const suddenStorageKey = "self-compass-sudden-logs";
+const selfCarePlansStorageKey = "selfCarePlans";
+const selfCareLogsStorageKey = "selfCareLogs";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -74,6 +100,26 @@ const symptomOptions = ["動悸", "息苦しさ", "胸の圧迫感", "吐き気"
 const actionOptions = ["寝た", "散歩した", "深呼吸した", "入浴した", "誰かに連絡した", "薬を飲んだ", "食べた", "泣いた", "何もしなかった", "その他"];
 const supportTags = ["命に関わる考え", "自分を傷つけたい感覚"];
 const supportWords = ["死にたい", "消えたい", "自傷", "薬を大量に飲む", "飛び降りる", "首を吊る", "生きていたくない"];
+const selfCareCategories: SelfCareCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "習慣を見直す"];
+const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo">> = [
+  { title: "朝の光を浴びる", category: "体を整える", memo: "窓辺や外で少し光を感じる" },
+  { title: "5分だけ外に出る", category: "体を整える", memo: "短い時間で試せる行動" },
+  { title: "深呼吸をする", category: "体を整える", memo: "数回だけでも大丈夫" },
+  { title: "水を飲む", category: "体を整える", memo: "ひと口から試せます" },
+  { title: "軽く体を動かす", category: "体を整える", memo: "肩や首をゆっくり動かす" },
+  { title: "散歩する", category: "体を整える", memo: "近所を少し歩く" },
+  { title: "入浴する", category: "休む", memo: "湯船でもシャワーでもOK" },
+  { title: "早めに休む", category: "休む", memo: "予定を少し軽くする" },
+  { title: "スマホから少し離れる", category: "環境を整える", memo: "数分だけ画面から離れる" },
+  { title: "部屋を少し整える", category: "環境を整える", memo: "ひとつだけ片づける" },
+  { title: "音楽を聴く", category: "環境を整える", memo: "今の状態に合いそうな曲を選ぶ" },
+  { title: "紙に書き出す", category: "思考を整理する", memo: "浮かんだことを短く書く" },
+  { title: "信頼できる人に連絡する", category: "人とつながる", memo: "短い一言でも大丈夫" },
+  { title: "予定を少し減らす", category: "休む", memo: "調整できる予定を見直す" },
+  { title: "食事を整える", category: "習慣を見直す", memo: "食べやすいものを選ぶ" },
+  { title: "カフェインを控えめにする", category: "習慣を見直す", memo: "合うかどうか記録で見ていく" },
+  { title: "何もしない時間を作る", category: "休む", memo: "短い余白を作る" },
+];
 
 function readStorage<T>(key: string): T[] {
   try {
@@ -95,15 +141,30 @@ function loadSuddenLogs() {
   return logs;
 }
 
+function loadSelfCarePlans() {
+  const plans = readStorage<Partial<SelfCarePlan>>(selfCarePlansStorageKey).map(normalizeSelfCarePlan);
+  localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(plans));
+  return plans;
+}
+
+function loadSelfCareLogs() {
+  const logs = readStorage<Partial<SelfCareLog>>(selfCareLogsStorageKey).map(normalizeSelfCareLog);
+  localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(logs));
+  return logs;
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
   const [suddenLogs, setSuddenLogs] = useState<SuddenLog[]>(loadSuddenLogs);
+  const [selfCarePlans, setSelfCarePlans] = useState<SelfCarePlan[]>(loadSelfCarePlans);
+  const [selfCareLogs, setSelfCareLogs] = useState<SelfCareLog[]>(loadSelfCareLogs);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
+  const [loggingPlan, setLoggingPlan] = useState<SelfCarePlan | null>(null);
   const [flash, setFlash] = useState("");
 
   const saveDaily = (record: DailyRecord) => {
@@ -130,6 +191,30 @@ function App() {
     setScreen(isEditing ? "records" : "home");
   };
 
+  const saveSelfCarePlan = (plan: SelfCarePlan) => {
+    const isEditing = selfCarePlans.some((item) => item.id === plan.id);
+    const next = isEditing ? selfCarePlans.map((item) => (item.id === plan.id ? plan : item)) : [plan, ...selfCarePlans];
+    setSelfCarePlans(next);
+    localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(next));
+    setFlash(isEditing ? "マイプランを更新しました" : "マイプランに追加しました");
+  };
+
+  const deleteSelfCarePlan = (id: string) => {
+    const next = selfCarePlans.filter((plan) => plan.id !== id);
+    setSelfCarePlans(next);
+    localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(next));
+    setPendingDelete(null);
+    setFlash("マイプランから削除しました");
+  };
+
+  const saveSelfCareLog = (log: SelfCareLog) => {
+    const next = [log, ...selfCareLogs];
+    setSelfCareLogs(next);
+    localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(next));
+    setLoggingPlan(null);
+    setFlash("セルフケアの記録を保存しました");
+  };
+
   const deleteDaily = (id: string) => {
     const next = dailyRecords.filter((record) => record.id !== id);
     setDailyRecords(next);
@@ -151,8 +236,12 @@ function App() {
   const importBackup = (backup: BackupData) => {
     setDailyRecords(backup.dailyRecords);
     setSuddenLogs(backup.suddenLogs);
+    setSelfCarePlans(backup.selfCarePlans);
+    setSelfCareLogs(backup.selfCareLogs);
     localStorage.setItem(dailyStorageKey, JSON.stringify(backup.dailyRecords));
     localStorage.setItem(suddenStorageKey, JSON.stringify(backup.suddenLogs));
+    localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(backup.selfCarePlans));
+    localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(backup.selfCareLogs));
     setPendingImport(null);
     setDetailItem(null);
     setFlash("バックアップを読み込みました");
@@ -162,8 +251,12 @@ function App() {
   const deleteAllData = () => {
     setDailyRecords([]);
     setSuddenLogs([]);
+    setSelfCarePlans([]);
+    setSelfCareLogs([]);
     localStorage.setItem(dailyStorageKey, JSON.stringify([]));
     localStorage.setItem(suddenStorageKey, JSON.stringify([]));
+    localStorage.setItem(selfCarePlansStorageKey, JSON.stringify([]));
+    localStorage.setItem(selfCareLogsStorageKey, JSON.stringify([]));
     setPendingDelete(null);
     setDetailItem(null);
     setFlash("保存されている記録を削除しました");
@@ -177,7 +270,13 @@ function App() {
           <Home
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
+            selfCarePlans={selfCarePlans}
             flash={flash}
+            onCareDone={setLoggingPlan}
+            onSelfCare={() => {
+              setFlash("");
+              setScreen("selfcare");
+            }}
             onData={() => {
               setFlash("");
               setScreen("data");
@@ -216,12 +315,24 @@ function App() {
             onDeleteSudden={(id) => setPendingDelete({ kind: "sudden", id })}
           />
         )}
-        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} />}
-        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} />}
+        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} />}
+        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} />}
+        {screen === "selfcare" && (
+          <SelfCareScreen
+            plans={selfCarePlans}
+            logs={selfCareLogs}
+            flash={flash}
+            onSavePlan={saveSelfCarePlan}
+            onDeletePlan={(id) => setPendingDelete({ kind: "selfcare", id })}
+            onCareDone={setLoggingPlan}
+          />
+        )}
         {screen === "data" && (
           <DataManagement
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
+            selfCarePlans={selfCarePlans}
+            selfCareLogs={selfCareLogs}
             flash={flash}
             onImportRequest={setPendingImport}
             onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
@@ -235,11 +346,13 @@ function App() {
           onConfirm={() => {
             if (pendingDelete.kind === "daily") deleteDaily(pendingDelete.id);
             if (pendingDelete.kind === "sudden") deleteSudden(pendingDelete.id);
+            if (pendingDelete.kind === "selfcare") deleteSelfCarePlan(pendingDelete.id);
             if (pendingDelete.kind === "all") deleteAllData();
           }}
           isAllData={pendingDelete.kind === "all"}
         />
       )}
+      {loggingPlan && <SelfCareLogModal plan={loggingPlan} onCancel={() => setLoggingPlan(null)} onSave={saveSelfCareLog} />}
       {pendingImport && (
         <ConfirmImportModal
           onCancel={() => setPendingImport(null)}
@@ -271,10 +384,31 @@ function App() {
   );
 }
 
-function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden, onData }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; flash: string; onDaily: () => void; onSudden: () => void; onData: () => void }) {
+function Home({
+  dailyRecords,
+  suddenLogs,
+  selfCarePlans,
+  flash,
+  onDaily,
+  onSudden,
+  onData,
+  onSelfCare,
+  onCareDone,
+}: {
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  selfCarePlans: SelfCarePlan[];
+  flash: string;
+  onDaily: () => void;
+  onSudden: () => void;
+  onData: () => void;
+  onSelfCare: () => void;
+  onCareDone: (plan: SelfCarePlan) => void;
+}) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const weekRecords = dailyRecords.filter((record) => daysAgo(record.date) <= 6);
   const weekLogs = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) <= 6);
+  const todayPlans = selfCarePlans.slice(0, 3);
 
   return (
     <section>
@@ -290,6 +424,9 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden, onData }: { 
         スマホでは、ブラウザの共有ボタンから「ホーム画面に追加」を選ぶと、アプリのように起動できます。
       </div>
       {flash && <div className="success-message">{flash}</div>}
+      {flash.includes("突発ログ") && (
+        <button className="secondary-btn home-follow-up" onClick={onSelfCare}>今できそうな小さな行動を見てみる</button>
+      )}
 
       <section className="status-panel">
         <div>
@@ -306,8 +443,28 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden, onData }: { 
       <div className="action-stack">
         <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
         <button className="primary-btn" onClick={onDaily}>今日の記録をする</button>
+        <button className="secondary-btn no-margin" onClick={onSelfCare}>セルフケア</button>
         <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
       </div>
+
+      <section className="section-block">
+        <h2>今日の小さな一手</h2>
+        {todayPlans.length === 0 ? (
+          <p className="soft-text">セルフケアから自分に合いそうな行動を追加できます。</p>
+        ) : (
+          <div className="mini-plan-list">
+            {todayPlans.map((plan) => (
+              <article className="mini-plan" key={plan.id}>
+                <div>
+                  <strong>{plan.title}</strong>
+                  <span>{plan.category}</span>
+                </div>
+                <button className="secondary-action" onClick={() => onCareDone(plan)}>できた</button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="section-block">
         <h2>直近7日間</h2>
@@ -325,12 +482,16 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden, onData }: { 
 function DataManagement({
   dailyRecords,
   suddenLogs,
+  selfCarePlans,
+  selfCareLogs,
   flash,
   onImportRequest,
   onDeleteAllRequest,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
+  selfCarePlans: SelfCarePlan[];
+  selfCareLogs: SelfCareLog[];
   flash: string;
   onImportRequest: (backup: BackupData) => void;
   onDeleteAllRequest: () => void;
@@ -347,6 +508,8 @@ function DataManagement({
     },
     dailyRecords,
     suddenLogs,
+    selfCarePlans,
+    selfCareLogs,
   };
 
   const handleImport = async (file: File | undefined) => {
@@ -392,6 +555,17 @@ function DataManagement({
     setMessage("突発ログCSVを作成しました。");
   };
 
+  const exportSelfCareCsv = () => {
+    if (!selfCareLogs.length) {
+      setError("出力できるセルフケア記録がありません。");
+      setMessage("");
+      return;
+    }
+    downloadTextFile(`self-care-logs-${today()}.csv`, toSelfCareCsv(selfCareLogs), "text/csv;charset=utf-8");
+    setError("");
+    setMessage("セルフケア記録CSVを作成しました。");
+  };
+
   return (
     <section>
       <header className="page-head">
@@ -412,7 +586,7 @@ function DataManagement({
 
       <section className="section-block data-card">
         <h2>JSONバックアップ</h2>
-        <p className="soft-text">日々の記録と突発ログをまとめて、端末内でファイル化します。外部へ送信されることはありません。</p>
+        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録をまとめて、端末内でファイル化します。外部へ送信されることはありません。</p>
         <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
       </section>
 
@@ -435,15 +609,204 @@ function DataManagement({
         <div className="data-actions">
           <button className="secondary-btn no-margin" onClick={exportDailyCsv}>日々の記録CSV</button>
           <button className="secondary-btn no-margin" onClick={exportSuddenCsv}>突発ログCSV</button>
+          <button className="secondary-btn no-margin" onClick={exportSelfCareCsv}>セルフケア記録CSV</button>
         </div>
       </section>
 
       <section className="section-block data-card danger-zone">
         <h2>全データ削除</h2>
-        <p className="soft-text">保存されている日々の記録と突発ログをすべて削除します。先にバックアップを取ることをおすすめします。</p>
+        <p className="soft-text">保存されている記録、マイプラン、セルフケア記録をすべて削除します。先にバックアップを取ることをおすすめします。</p>
         <button className="delete-action full-width" onClick={onDeleteAllRequest}>すべての記録を削除</button>
       </section>
     </section>
+  );
+}
+
+function SelfCareScreen({
+  plans,
+  logs,
+  flash,
+  onSavePlan,
+  onDeletePlan,
+  onCareDone,
+}: {
+  plans: SelfCarePlan[];
+  logs: SelfCareLog[];
+  flash: string;
+  onSavePlan: (plan: SelfCarePlan) => void;
+  onDeletePlan: (id: string) => void;
+  onCareDone: (plan: SelfCarePlan) => void;
+}) {
+  const [customTitle, setCustomTitle] = useState("");
+  const [customCategory, setCustomCategory] = useState<SelfCareCategory>("体を整える");
+  const [customMemo, setCustomMemo] = useState("");
+  const [editingPlan, setEditingPlan] = useState<SelfCarePlan | null>(null);
+
+  const addPlan = (item: Pick<SelfCarePlan, "title" | "category" | "memo">) => {
+    onSavePlan({
+      id: newId(),
+      title: item.title,
+      category: item.category,
+      memo: item.memo,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    });
+  };
+
+  const saveCustom = () => {
+    const title = customTitle.trim();
+    if (!title) return;
+    onSavePlan({
+      id: editingPlan?.id || newId(),
+      title,
+      category: customCategory,
+      memo: customMemo,
+      createdAt: editingPlan?.createdAt || nowIso(),
+      updatedAt: nowIso(),
+    });
+    setCustomTitle("");
+    setCustomMemo("");
+    setCustomCategory("体を整える");
+    setEditingPlan(null);
+  };
+
+  const groupedCandidates = selfCareCategories.map((category) => ({
+    category,
+    items: selfCareCandidates.filter((item) => item.category === category),
+  }));
+  const recentLogs = logs.slice(0, 5);
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">試せることを選ぶ</p>
+          <h1>セルフケア</h1>
+        </div>
+      </header>
+      {flash && <div className="success-message">{flash}</div>}
+      <div className="notice">ここでの候補は、治療法ではなくセルフケアのヒントです。合うかどうかを記録しながら、無理のないものを選んでください。</div>
+
+      <section className="section-block">
+        <h2>マイプラン</h2>
+        {plans.length === 0 && <p className="soft-text">自分に合いそうな小さな行動を追加できます。</p>}
+        <div className="record-list">
+          {plans.map((plan) => (
+            <article className="record-card" key={plan.id}>
+              <div className="record-card-head">
+                <div>
+                  <p className="label">{plan.category}</p>
+                  <h2>{plan.title}</h2>
+                </div>
+                <span className="badge">マイプラン</span>
+              </div>
+              {plan.memo && <p className="record-snippet">{plan.memo}</p>}
+              <div className="card-actions">
+                <button className="secondary-action" onClick={() => onCareDone(plan)}>できた</button>
+                <button
+                  className="secondary-action"
+                  onClick={() => {
+                    setEditingPlan(plan);
+                    setCustomTitle(plan.title);
+                    setCustomCategory(plan.category);
+                    setCustomMemo(plan.memo);
+                  }}
+                >
+                  編集
+                </button>
+                <button className="delete-action" onClick={() => onDeletePlan(plan.id)}>削除</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>{editingPlan ? "マイプランを編集" : "カスタム項目を追加"}</h2>
+        <label className="field">
+          <span>タイトル</span>
+          <input value={customTitle} onChange={(event) => setCustomTitle(event.target.value)} placeholder="例: 5分だけ静かに座る" />
+        </label>
+        <Choice label="カテゴリ" options={selfCareCategories} value={customCategory} onChange={(value) => setCustomCategory(value as SelfCareCategory)} />
+        <TextArea label="メモ" helper="自分向けの短いメモを書けます" value={customMemo} onChange={setCustomMemo} />
+        <div className="data-actions">
+          <button className="primary-btn" onClick={saveCustom}>{editingPlan ? "更新する" : "追加する"}</button>
+          {editingPlan && <button className="secondary-btn no-margin" onClick={() => setEditingPlan(null)}>編集をやめる</button>}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <h2>セルフケア候補</h2>
+        {groupedCandidates.map((group) => (
+          <div className="candidate-group" key={group.category}>
+            <h3>{group.category}</h3>
+            <div className="record-list">
+              {group.items.map((item) => (
+                <article className="candidate-card" key={item.title}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <p>{item.memo}</p>
+                  </div>
+                  <button className="secondary-action" onClick={() => addPlan(item)}>追加</button>
+                </article>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="section-block">
+        <h2>最近のセルフケア記録</h2>
+        {recentLogs.length === 0 ? (
+          <p className="soft-text">まだ実行ログはありません。</p>
+        ) : (
+          <div className="detail-list">
+            {recentLogs.map((log) => (
+              <div className="detail-row" key={log.id}>
+                <span>{formatDateTime(log.createdAt)} ・ {log.category}</span>
+                <strong>{log.title} / {log.result}</strong>
+                {log.memo && <p className="record-snippet">{log.memo}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function SelfCareLogModal({ plan, onCancel, onSave }: { plan: SelfCarePlan; onCancel: () => void; onSave: (log: SelfCareLog) => void }) {
+  const [result, setResult] = useState<SelfCareResult>("後で振り返る");
+  const [memo, setMemo] = useState("");
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="confirm-modal">
+        <h2>できた記録</h2>
+        <p>{plan.title}</p>
+        <Choice label="実行後の感じ方" options={["少し整った", "変化は少なめ", "今は合わなかった", "後で振り返る"]} value={result} onChange={(value) => setResult(value as SelfCareResult)} />
+        <TextArea label="メモ" helper="短く残せます" value={memo} onChange={setMemo} />
+        <div className="confirm-actions">
+          <button className="secondary-action" onClick={onCancel}>キャンセル</button>
+          <button
+            className="primary-btn"
+            onClick={() =>
+              onSave({
+                id: newId(),
+                planId: plan.id,
+                title: plan.title,
+                category: plan.category,
+                result,
+                memo,
+                createdAt: nowIso(),
+              })
+            }
+          >
+            保存する
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -666,7 +1029,7 @@ function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; 
   );
 }
 
-function Analysis({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[] }) {
+function Analysis({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[] }) {
   const sortedDaily = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date));
   const highDaily = sortedDaily.slice(-14);
   const weatherMood = groupedAverage(dailyRecords, (record) => record.weather, (record) => record.mood);
@@ -679,6 +1042,8 @@ function Analysis({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; s
   const helpfulActions = countFlat(suddenLogs.filter((log) => log.afterChange.includes("落ち着いた")).flatMap((log) => log.actions));
   const dayCounts = countBy(suddenLogs, (log) => ["日", "月", "火", "水", "木", "金", "土"][new Date(log.occurredAt).getDay()]);
   const hourCounts = countBy(suddenLogs, (log) => `${new Date(log.occurredAt).getHours()}時台`);
+  const selfCareCounts = countBy(selfCareLogs, (log) => log.title);
+  const selfCareResultCounts = countBy(selfCareLogs, (log) => log.result);
 
   return (
     <section>
@@ -730,11 +1095,28 @@ function Analysis({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; s
           </>
         )}
       </section>
+
+      <section className="section-block">
+        <h2>セルフケア</h2>
+        {selfCareLogs.length === 0 ? (
+          <EmptyState text="まだセルフケア記録がありません" />
+        ) : (
+          <>
+            <p className="soft-text">記録上の傾向です。この行動が合いやすい可能性があります。参考情報として見てください。</p>
+            <div className="summary-list">
+              <Metric label="実行回数" value={`${selfCareLogs.length}件`} />
+              <Metric label="最近の記録" value={formatDateTime(selfCareLogs[0].createdAt)} />
+            </div>
+            <KeyValueList title="よく使ったセルフケア" items={selfCareCounts} suffix="件" />
+            <KeyValueList title="実行後の感じ方の傾向" items={selfCareResultCounts} suffix="件" />
+          </>
+        )}
+      </section>
     </section>
   );
 }
 
-function Report({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[] }) {
+function Report({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[] }) {
   const [period, setPeriod] = useState(7);
   const [doctorMemo, setDoctorMemo] = useState("");
   const daily = dailyRecords.filter((record) => daysAgo(record.date) < period);
@@ -745,6 +1127,10 @@ function Report({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; sud
   const topSymptoms = countFlat(sudden.flatMap((log) => log.symptoms)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topActions = countFlat(sudden.filter((log) => log.afterChange.includes("落ち着いた")).flatMap((log) => log.actions)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const waveDays = daily.filter((record) => record.mood <= 3 || record.anxiety >= 8 || record.fatigue >= 8).map((record) => record.date).join("、") || "目立つ記録なし";
+  const careInPeriod = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
+  const topCare = countBy(careInPeriod, (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const settledCare = countBy(careInPeriod.filter((log) => log.result === "少し整った"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const notFitCare = countBy(careInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
 
   const fewRecordsNote = hasFewRecords ? "記録が少ないため参考程度です。\n" : "";
   const summary = `過去${period}日間のセルフ記録です。このアプリは診断・治療・服薬指示を行うものではありません。
@@ -759,6 +1145,9 @@ ${fewRecordsNote}
 多かったきっかけ: ${topTriggers}
 多かった身体のサイン: ${topSymptoms}
 効果がありそうだった対処: ${topActions}
+よく使ったセルフケア: ${topCare}
+実行後に整ったと感じた行動: ${settledCare}
+今は合わなかった行動: ${notFitCare}
 相談時に伝えたいこと: ${doctorMemo || "未記入"}`;
 
   const prompt = `以下はメンタルヘルスのセルフ記録です。診断や治療判断、服薬指示はしないでください。
@@ -1138,6 +1527,8 @@ function normalizeBackupData(data: unknown): BackupData {
       app: { name: "Self Compass", version: appVersion, exportedAt: nowIso() },
       dailyRecords: data.map((record) => normalizeDailyRecord(record as Partial<DailyRecord>)),
       suddenLogs: [],
+      selfCarePlans: [],
+      selfCareLogs: [],
     };
   }
 
@@ -1145,17 +1536,23 @@ function normalizeBackupData(data: unknown): BackupData {
   const source = data as {
     dailyRecords?: Partial<DailyRecord>[];
     suddenLogs?: Partial<SuddenLog>[];
+    selfCarePlans?: Partial<SelfCarePlan>[];
+    selfCareLogs?: Partial<SelfCareLog>[];
     daily?: Partial<DailyRecord>[];
     sudden?: Partial<SuddenLog>[];
   };
   const daily = source.dailyRecords || source.daily;
   const sudden = source.suddenLogs || source.sudden;
+  const plans = source.selfCarePlans || [];
+  const logs = source.selfCareLogs || [];
   if (!Array.isArray(daily) || !Array.isArray(sudden)) throw new Error("Invalid backup");
 
   return {
     app: { name: "Self Compass", version: appVersion, exportedAt: nowIso() },
     dailyRecords: daily.map(normalizeDailyRecord),
     suddenLogs: sudden.map(normalizeSuddenLog),
+    selfCarePlans: Array.isArray(plans) ? plans.map(normalizeSelfCarePlan) : [],
+    selfCareLogs: Array.isArray(logs) ? logs.map(normalizeSelfCareLog) : [],
   };
 }
 
@@ -1198,6 +1595,14 @@ function toSuddenCsv(logs: SuddenLog[]) {
       log.afterChange,
       log.memo,
     ]),
+  ];
+  return `\uFEFF${rows.map(csvRow).join("\n")}`;
+}
+
+function toSelfCareCsv(logs: SelfCareLog[]) {
+  const rows = [
+    ["実行日時", "セルフケア名", "カテゴリ", "実行後の感じ方", "メモ"],
+    ...logs.map((log) => [formatDateTime(log.createdAt), log.title, log.category, log.result, log.memo]),
   ];
   return `\uFEFF${rows.map(csvRow).join("\n")}`;
 }
@@ -1250,6 +1655,39 @@ function normalizeSuddenLog(log: Partial<SuddenLog>): SuddenLog {
     createdAt: timestamp,
     updatedAt: log.updatedAt || timestamp,
   };
+}
+
+function normalizeSelfCarePlan(plan: Partial<SelfCarePlan>): SelfCarePlan {
+  const timestamp = plan.createdAt || nowIso();
+  return {
+    id: plan.id || newId(),
+    title: plan.title || "セルフケア",
+    category: normalizeSelfCareCategory(plan.category),
+    memo: plan.memo || "",
+    createdAt: timestamp,
+    updatedAt: plan.updatedAt || timestamp,
+  };
+}
+
+function normalizeSelfCareLog(log: Partial<SelfCareLog>): SelfCareLog {
+  return {
+    id: log.id || newId(),
+    planId: log.planId || "",
+    title: log.title || "セルフケア",
+    category: normalizeSelfCareCategory(log.category),
+    result: normalizeSelfCareResult(log.result),
+    memo: log.memo || "",
+    createdAt: log.createdAt || nowIso(),
+  };
+}
+
+function normalizeSelfCareCategory(category?: string): SelfCareCategory {
+  return selfCareCategories.includes(category as SelfCareCategory) ? (category as SelfCareCategory) : "体を整える";
+}
+
+function normalizeSelfCareResult(result?: string): SelfCareResult {
+  const options: SelfCareResult[] = ["少し整った", "変化は少なめ", "今は合わなかった", "後で振り返る"];
+  return options.includes(result as SelfCareResult) ? (result as SelfCareResult) : "後で振り返る";
 }
 
 function normalizeStateTags(tags?: string[], legacyState?: string) {

@@ -661,6 +661,60 @@ textarea {
   gap: 10px;
 }
 
+.home-follow-up {
+  margin: 12px 0 0;
+}
+
+.mini-plan-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mini-plan {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 8px;
+  background: #edf4ef;
+}
+
+.mini-plan strong,
+.candidate-card strong {
+  display: block;
+  line-height: 1.35;
+}
+
+.mini-plan span {
+  display: block;
+  margin-top: 4px;
+  color: #63736d;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.candidate-group {
+  margin-top: 16px;
+}
+
+.candidate-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(83, 111, 102, 0.16);
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.candidate-card p {
+  margin: 5px 0 0;
+  color: #60726b;
+  line-height: 1.5;
+}
+
 .file-input {
   display: none;
 }
