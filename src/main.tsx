@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -85,6 +85,24 @@ type ConsultationNote = {
   updatedAt: string;
 };
 
+type AutoLockMinutes = 1 | 5 | 15 | 30 | 0;
+
+type PrivacySettings = {
+  isLockEnabled: boolean;
+  passcodeHash: string;
+  autoLockMinutes: AutoLockMinutes;
+  privateDisplayMode: boolean;
+  updatedAt: string;
+};
+
+type BackupPrivacySettings = {
+  isLockEnabled: boolean;
+  autoLockMinutes: AutoLockMinutes;
+  privateDisplayMode: boolean;
+  passcodeIncluded: false;
+  updatedAt: string;
+};
+
 type Insight = {
   id: string;
   title: string;
@@ -95,7 +113,7 @@ type Insight = {
   group: "daily" | "sudden" | "selfcare";
 };
 
-type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report" | "data" | "selfcare" | "consultation";
+type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report" | "data" | "selfcare" | "consultation" | "privacy";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "all" };
@@ -110,6 +128,7 @@ type BackupData = {
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  privacySettings: BackupPrivacySettings;
 };
 
 const dailyStorageKey = "self-compass-daily-records";
@@ -117,6 +136,7 @@ const suddenStorageKey = "self-compass-sudden-logs";
 const selfCarePlansStorageKey = "selfCarePlans";
 const selfCareLogsStorageKey = "selfCareLogs";
 const consultationNotesStorageKey = "consultationNotes";
+const privacySettingsStorageKey = "privacySettings";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -191,6 +211,19 @@ function loadConsultationNotes() {
   return notes;
 }
 
+function loadPrivacySettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(privacySettingsStorageKey) || "{}") as Partial<PrivacySettings>;
+    const settings = normalizePrivacySettings(parsed);
+    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  } catch {
+    const settings = defaultPrivacySettings();
+    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
@@ -198,6 +231,8 @@ function App() {
   const [selfCarePlans, setSelfCarePlans] = useState<SelfCarePlan[]>(loadSelfCarePlans);
   const [selfCareLogs, setSelfCareLogs] = useState<SelfCareLog[]>(loadSelfCareLogs);
   const [consultationNotes, setConsultationNotes] = useState<ConsultationNote[]>(loadConsultationNotes);
+  const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(loadPrivacySettings);
+  const [isLocked, setIsLocked] = useState(() => loadPrivacySettings().isLockEnabled);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
@@ -205,6 +240,48 @@ function App() {
   const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
   const [loggingPlan, setLoggingPlan] = useState<SelfCarePlan | null>(null);
   const [flash, setFlash] = useState("");
+
+  useEffect(() => {
+    if (!privacySettings.isLockEnabled || privacySettings.autoLockMinutes === 0 || isLocked) return;
+    let timer = window.setTimeout(() => setIsLocked(true), privacySettings.autoLockMinutes * 60000);
+    const resetTimer = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setIsLocked(true), privacySettings.autoLockMinutes * 60000);
+    };
+    ["pointerdown", "keydown", "touchstart"].forEach((eventName) => window.addEventListener(eventName, resetTimer));
+    return () => {
+      window.clearTimeout(timer);
+      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => window.removeEventListener(eventName, resetTimer));
+    };
+  }, [privacySettings.isLockEnabled, privacySettings.autoLockMinutes, isLocked]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden" && privacySettings.isLockEnabled) setIsLocked(true);
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [privacySettings.isLockEnabled]);
+
+  const savePrivacySettings = (settings: PrivacySettings) => {
+    setPrivacySettings(settings);
+    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(settings));
+  };
+
+  const updatePrivacySettings = (settings: PrivacySettings) => {
+    savePrivacySettings(settings);
+    setFlash("プライバシー設定を更新しました");
+  };
+
+  const lockApp = () => {
+    if (privacySettings.isLockEnabled) {
+      setIsLocked(true);
+      setFlash("");
+    } else {
+      setScreen("privacy");
+      setFlash("パスコードを設定するとロックを使えます");
+    }
+  };
 
   const saveDaily = (record: DailyRecord) => {
     const isEditing = dailyRecords.some((item) => item.id === record.id);
@@ -301,11 +378,14 @@ function App() {
     setSelfCarePlans(backup.selfCarePlans);
     setSelfCareLogs(backup.selfCareLogs);
     setConsultationNotes(backup.consultationNotes);
+    const nextPrivacy = normalizeImportedPrivacySettings(backup.privacySettings, privacySettings);
+    setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify(backup.dailyRecords));
     localStorage.setItem(suddenStorageKey, JSON.stringify(backup.suddenLogs));
     localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(backup.selfCarePlans));
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(backup.selfCareLogs));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(backup.consultationNotes));
+    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
     setPendingImport(null);
     setDetailItem(null);
     setFlash("バックアップを読み込みました");
@@ -318,16 +398,23 @@ function App() {
     setSelfCarePlans([]);
     setSelfCareLogs([]);
     setConsultationNotes([]);
+    const nextPrivacy = { ...privacySettings, privateDisplayMode: false, updatedAt: nowIso() };
+    setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify([]));
     localStorage.setItem(suddenStorageKey, JSON.stringify([]));
     localStorage.setItem(selfCarePlansStorageKey, JSON.stringify([]));
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify([]));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify([]));
+    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
     setPendingDelete(null);
     setDetailItem(null);
     setFlash("保存されている記録を削除しました");
     setScreen("data");
   };
+
+  if (isLocked && privacySettings.isLockEnabled) {
+    return <LockScreen settings={privacySettings} onUnlock={() => setIsLocked(false)} />;
+  }
 
   return (
     <div className="app-shell">
@@ -339,6 +426,7 @@ function App() {
             selfCarePlans={selfCarePlans}
             selfCareLogs={selfCareLogs}
             consultationNotes={consultationNotes}
+            privateDisplayMode={privacySettings.privateDisplayMode}
             flash={flash}
             onCareDone={setLoggingPlan}
             onSelfCare={() => {
@@ -353,6 +441,11 @@ function App() {
               setFlash("");
               setScreen("consultation");
             }}
+            onPrivacy={() => {
+              setFlash("");
+              setScreen("privacy");
+            }}
+            onLock={lockApp}
             onDaily={() => {
               setFlash("");
               setEditingDaily(dailyRecords.find((record) => record.date === today()) || null);
@@ -371,6 +464,7 @@ function App() {
           <RecordsScreen
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
+            privateDisplayMode={privacySettings.privateDisplayMode}
             flash={flash}
             onDetail={setDetailItem}
             onEditDaily={(record) => {
@@ -409,6 +503,15 @@ function App() {
             onSave={saveConsultationNote}
             onDelete={(id) => setPendingDelete({ kind: "consultation", id })}
             onMarkDone={(id) => updateConsultationStatus(id, "done")}
+            privateDisplayMode={privacySettings.privateDisplayMode}
+          />
+        )}
+        {screen === "privacy" && (
+          <PrivacyScreen
+            settings={privacySettings}
+            flash={flash}
+            onSave={updatePrivacySettings}
+            onLock={lockApp}
           />
         )}
         {screen === "data" && (
@@ -418,6 +521,7 @@ function App() {
             selfCarePlans={selfCarePlans}
             selfCareLogs={selfCareLogs}
             consultationNotes={consultationNotes}
+            privacySettings={privacySettings}
             flash={flash}
             onImportRequest={setPendingImport}
             onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
@@ -459,7 +563,7 @@ function App() {
             key={id}
             onClick={() => {
               setFlash("");
-              setScreen(id as Screen);
+            setScreen(id as Screen);
             }}
           >
             <span>{label}</span>
@@ -470,18 +574,221 @@ function App() {
   );
 }
 
+function LockScreen({ settings, onUnlock }: { settings: PrivacySettings; onUnlock: () => void }) {
+  const [passcode, setPasscode] = useState("");
+  const [error, setError] = useState("");
+
+  const unlock = async () => {
+    const hash = await hashPasscode(passcode);
+    if (hash === settings.passcodeHash) {
+      setPasscode("");
+      setError("");
+      onUnlock();
+      return;
+    }
+    setError("パスコードが一致しません。もう一度確認してください。");
+  };
+
+  return (
+    <main className="lock-screen">
+      <section className="lock-card">
+        <p className="eyebrow">Self Compass</p>
+        <h1>ロック中です</h1>
+        <p className="soft-text">これは記録内容を見えにくくするための簡易ロックです。医療情報レベルの完全な保護ではありません。</p>
+        {error && <div className="error-message">{error}</div>}
+        <label className="field">
+          <span>パスコード</span>
+          <input
+            className="passcode-input"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            type="password"
+            minLength={4}
+            maxLength={6}
+            value={passcode}
+            onChange={(event) => setPasscode(onlyDigits(event.target.value).slice(0, 6))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void unlock();
+            }}
+          />
+        </label>
+        <button className="primary-btn" onClick={unlock}>ロック解除</button>
+      </section>
+    </main>
+  );
+}
+
+function PrivacyScreen({ settings, flash, onSave, onLock }: { settings: PrivacySettings; flash: string; onSave: (settings: PrivacySettings) => void; onLock: () => void }) {
+  const [newPasscode, setNewPasscode] = useState("");
+  const [currentPasscode, setCurrentPasscode] = useState("");
+  const [changePasscode, setChangePasscode] = useState("");
+  const [disablePasscode, setDisablePasscode] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [confirmDisable, setConfirmDisable] = useState(false);
+
+  const clearInputs = () => {
+    setNewPasscode("");
+    setCurrentPasscode("");
+    setChangePasscode("");
+    setDisablePasscode("");
+  };
+
+  const validatePasscode = (value: string) => /^\d{4,6}$/.test(value);
+
+  const setPasscode = async () => {
+    setError("");
+    if (!validatePasscode(newPasscode)) {
+      setError("パスコードは4〜6桁の数字で入力してください。");
+      return;
+    }
+    onSave({ ...settings, isLockEnabled: true, passcodeHash: await hashPasscode(newPasscode), updatedAt: nowIso() });
+    clearInputs();
+    setMessage("パスコードを設定しました");
+  };
+
+  const changeCurrentPasscode = async () => {
+    setError("");
+    if (!validatePasscode(changePasscode)) {
+      setError("新しいパスコードは4〜6桁の数字で入力してください。");
+      return;
+    }
+    if ((await hashPasscode(currentPasscode)) !== settings.passcodeHash) {
+      setError("現在のパスコードが一致しません。もう一度確認してください。");
+      return;
+    }
+    onSave({ ...settings, isLockEnabled: true, passcodeHash: await hashPasscode(changePasscode), updatedAt: nowIso() });
+    clearInputs();
+    setMessage("パスコードを変更しました");
+  };
+
+  const disableLock = async () => {
+    setError("");
+    if ((await hashPasscode(disablePasscode)) !== settings.passcodeHash) {
+      setError("パスコードが一致しません。もう一度確認してください。");
+      return;
+    }
+    setConfirmDisable(true);
+  };
+
+  const confirmDisableLock = () => {
+    onSave({ ...settings, isLockEnabled: false, passcodeHash: "", updatedAt: nowIso() });
+    clearInputs();
+    setConfirmDisable(false);
+    setMessage("簡易ロックを解除しました");
+  };
+
+  const updateAutoLock = (label: string) => {
+    onSave({ ...settings, autoLockMinutes: autoLockFromLabel(label), updatedAt: nowIso() });
+    setMessage("自動ロック時間を更新しました");
+  };
+
+  const togglePrivateMode = () => {
+    onSave({ ...settings, privateDisplayMode: !settings.privateDisplayMode, updatedAt: nowIso() });
+    setMessage(!settings.privateDisplayMode ? "プライベート表示モードをONにしました" : "プライベート表示モードをOFFにしました");
+  };
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">表示を守る</p>
+          <h1>プライバシー設定</h1>
+        </div>
+      </header>
+      <p className="soft-text">記録内容を開いたままにしないための簡易ロックや、画面表示の保護を設定できます。</p>
+      <div className="notice">このロックは記録内容を見えにくくするための簡易機能です。端末やブラウザ全体を保護するものではありません。</div>
+      {flash && <div className="success-message">{flash}</div>}
+      {message && <div className="success-message">{message}</div>}
+      {error && <div className="error-message">{error}</div>}
+
+      <section className="section-block data-card">
+        <h2>簡易パスコード</h2>
+        <p className="soft-text">{settings.isLockEnabled ? "パスコードが設定されています。" : "4〜6桁の数字でパスコードを設定できます。"}</p>
+        {!settings.isLockEnabled ? (
+          <>
+            <PasscodeField label="新しいパスコード" value={newPasscode} onChange={setNewPasscode} />
+            <button className="primary-btn" onClick={setPasscode}>パスコードを設定</button>
+          </>
+        ) : (
+          <>
+            <FormSection title="変更">
+              <PasscodeField label="現在のパスコード" value={currentPasscode} onChange={setCurrentPasscode} />
+              <PasscodeField label="新しいパスコード" value={changePasscode} onChange={setChangePasscode} />
+              <button className="primary-btn" onClick={changeCurrentPasscode}>パスコードを変更</button>
+            </FormSection>
+            <FormSection title="解除">
+              <PasscodeField label="現在のパスコード" value={disablePasscode} onChange={setDisablePasscode} />
+              <button className="delete-action full-width" onClick={disableLock}>簡易ロックを解除</button>
+            </FormSection>
+            <button className="secondary-btn no-margin" onClick={onLock}>今すぐロック</button>
+          </>
+        )}
+      </section>
+
+      <section className="section-block data-card">
+        <h2>自動ロック</h2>
+        <p className="soft-text">操作がない時間が続いたときに、記録画面を閉じてロック画面に戻します。</p>
+        <Choice label="自動ロック時間" options={["1分", "5分", "15分", "30分", "自動ロックしない"]} value={autoLockLabel(settings.autoLockMinutes)} onChange={updateAutoLock} />
+      </section>
+
+      <section className="section-block data-card">
+        <h2>プライベート表示モード</h2>
+        <p className="soft-text">ホームの数値、記録一覧や相談ノートの本文プレビューを見えにくくします。</p>
+        <button className={settings.privateDisplayMode ? "primary-btn" : "secondary-btn no-margin"} onClick={togglePrivateMode}>
+          {settings.privateDisplayMode ? "ONになっています" : "OFFになっています"}
+        </button>
+      </section>
+
+      {confirmDisable && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="confirm-modal">
+            <h2>簡易ロックを解除しますか？</h2>
+            <p>記録内容は同じ端末・同じブラウザでは表示できる状態になります。必要になったら、また設定できます。</p>
+            <div className="confirm-actions">
+              <button className="secondary-action" onClick={() => setConfirmDisable(false)}>キャンセル</button>
+              <button className="delete-action" onClick={confirmDisableLock}>解除する</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PasscodeField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        className="passcode-input"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        type="password"
+        minLength={4}
+        maxLength={6}
+        value={value}
+        onChange={(event) => onChange(onlyDigits(event.target.value).slice(0, 6))}
+      />
+    </label>
+  );
+}
+
 function Home({
   dailyRecords,
   suddenLogs,
   selfCarePlans,
   selfCareLogs,
   consultationNotes,
+  privateDisplayMode,
   flash,
   onDaily,
   onSudden,
   onData,
   onSelfCare,
   onConsultation,
+  onPrivacy,
+  onLock,
   onCareDone,
 }: {
   dailyRecords: DailyRecord[];
@@ -489,12 +796,15 @@ function Home({
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  privateDisplayMode: boolean;
   flash: string;
   onDaily: () => void;
   onSudden: () => void;
   onData: () => void;
   onSelfCare: () => void;
   onConsultation: () => void;
+  onPrivacy: () => void;
+  onLock: () => void;
   onCareDone: (plan: SelfCarePlan) => void;
 }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
@@ -529,17 +839,19 @@ function Home({
           <h2>{todayRecord ? "記録済み" : "まだ未記録"}</h2>
         </div>
         <div className="quick-grid">
-          <Metric label="気分" value={todayRecord ? `${todayRecord.mood}/10` : "-"} />
-          <Metric label="不安" value={todayRecord ? `${todayRecord.anxiety}/10` : "-"} />
-          <Metric label="睡眠" value={todayRecord ? `${todayRecord.sleepHours}h` : "-"} />
+          <Metric label="気分" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? `${todayRecord.mood}/10` : "-"} />
+          <Metric label="不安" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? `${todayRecord.anxiety}/10` : "-"} />
+          <Metric label="睡眠" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? `${todayRecord.sleepHours}h` : "-"} />
         </div>
       </section>
 
       <div className="action-stack">
+        <button className="secondary-btn no-margin" onClick={onLock}>ロック</button>
         <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
         <button className="primary-btn" onClick={onDaily}>今日の記録をする</button>
         <button className="secondary-btn no-margin" onClick={onSelfCare}>セルフケア</button>
         <button className="secondary-btn no-margin" onClick={onConsultation}>相談ノート</button>
+        <button className="secondary-btn no-margin" onClick={onPrivacy}>プライバシー設定</button>
         <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
       </div>
 
@@ -579,7 +891,7 @@ function Home({
         <p className="soft-text">話したいことを少しずつメモしておけます。</p>
         <div className="summary-list">
           <Metric label="未相談メモ" value={`${openNotes.length}件`} />
-          <Metric label="直近更新" value={latestNote ? latestNote.title : "なし"} />
+          <Metric label="直近更新" value={privateDisplayMode && latestNote ? "メモあり" : latestNote ? latestNote.title : "なし"} />
         </div>
         <button className="secondary-btn" onClick={onConsultation}>相談ノートを開く</button>
       </section>
@@ -588,8 +900,8 @@ function Home({
         <h2>直近7日間</h2>
         <div className="summary-list">
           <Metric label="記録日数" value={`${weekRecords.length}日`} />
-          <Metric label="平均気分" value={formatAverage(weekRecords.map((record) => record.mood))} />
-          <Metric label="平均不安" value={formatAverage(weekRecords.map((record) => record.anxiety))} />
+          <Metric label="平均気分" value={privateDisplayMode && weekRecords.length ? "非表示" : formatAverage(weekRecords.map((record) => record.mood))} />
+          <Metric label="平均不安" value={privateDisplayMode && weekRecords.length ? "非表示" : formatAverage(weekRecords.map((record) => record.anxiety))} />
           <Metric label="突発ログ" value={`${weekLogs.length}件`} />
         </div>
       </section>
@@ -603,6 +915,7 @@ function DataManagement({
   selfCarePlans,
   selfCareLogs,
   consultationNotes,
+  privacySettings,
   flash,
   onImportRequest,
   onDeleteAllRequest,
@@ -612,6 +925,7 @@ function DataManagement({
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  privacySettings: PrivacySettings;
   flash: string;
   onImportRequest: (backup: BackupData) => void;
   onDeleteAllRequest: () => void;
@@ -631,6 +945,7 @@ function DataManagement({
     selfCarePlans,
     selfCareLogs,
     consultationNotes,
+    privacySettings: toBackupPrivacySettings(privacySettings),
   };
 
   const handleImport = async (file: File | undefined) => {
@@ -713,12 +1028,13 @@ function DataManagement({
       <section className="section-block">
         <h2>保存について</h2>
         <p className="soft-text">このアプリの記録は、現在お使いのブラウザ内に保存されます。ブラウザのデータを消したり、端末を変更した場合、記録が失われることがあります。大切な記録は定期的にバックアップしてください。</p>
+        <p className="soft-text">共有URLを開いた人同士で記録が共有されるわけではありません。ただし、同じ端末・同じブラウザを使う人には見える可能性があります。必要に応じて、プライバシー設定を利用してください。</p>
         <p className="soft-text">このアプリは診断や治療を行うものではありません。記録は医師や専門家に相談するための参考情報として利用してください。</p>
       </section>
 
       <section className="section-block data-card">
         <h2>JSONバックアップ</h2>
-        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモをまとめて、端末内でファイル化します。外部へ送信されることはありません。</p>
+        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、プライバシー設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。</p>
         <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
       </section>
 
@@ -952,6 +1268,7 @@ function ConsultationScreen({
   onSave,
   onDelete,
   onMarkDone,
+  privateDisplayMode,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -961,6 +1278,7 @@ function ConsultationScreen({
   onSave: (note: ConsultationNote) => void;
   onDelete: (id: string) => void;
   onMarkDone: (id: string) => void;
+  privateDisplayMode: boolean;
 }) {
   const [editing, setEditing] = useState<ConsultationNote | null>(null);
   const [detail, setDetail] = useState<ConsultationNote | null>(null);
@@ -1052,7 +1370,7 @@ function ConsultationScreen({
                   </div>
                   <span className="badge">{formatDateTime(note.updatedAt)}</span>
                 </div>
-                <p className="record-snippet">{shortText(note.mainTopic || note.recentConcern || note.dontForgetMemo)}</p>
+                <p className="record-snippet">{privateDisplayMode ? "メモは非表示です" : shortText(note.mainTopic || note.recentConcern || note.dontForgetMemo)}</p>
                 <div className="card-actions">
                   <button className="secondary-action" onClick={() => setDetail(note)}>詳細</button>
                   <button className="secondary-action" onClick={() => startEdit(note)}>編集</button>
@@ -1153,6 +1471,7 @@ function ConsultationDetailModal({
 function RecordsScreen({
   dailyRecords,
   suddenLogs,
+  privateDisplayMode,
   flash,
   onDetail,
   onEditDaily,
@@ -1162,6 +1481,7 @@ function RecordsScreen({
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
+  privateDisplayMode: boolean;
   flash: string;
   onDetail: (item: DetailItem) => void;
   onEditDaily: (record: DailyRecord) => void;
@@ -1200,14 +1520,14 @@ function RecordsScreen({
                 <span className="badge">{record.weather}</span>
               </div>
               <div className="compact-metrics">
-                <Metric label="気分" value={`${record.mood}/10`} />
-                <Metric label="不安" value={`${record.anxiety}/10`} />
-                <Metric label="イライラ" value={`${record.irritability}/10`} />
-                <Metric label="疲労" value={`${record.fatigue}/10`} />
-                <Metric label="睡眠" value={`${record.sleepHours}h`} />
+                <Metric label="気分" value={privateDisplayMode ? "記録あり" : `${record.mood}/10`} />
+                <Metric label="不安" value={privateDisplayMode ? "記録あり" : `${record.anxiety}/10`} />
+                <Metric label="イライラ" value={privateDisplayMode ? "記録あり" : `${record.irritability}/10`} />
+                <Metric label="疲労" value={privateDisplayMode ? "記録あり" : `${record.fatigue}/10`} />
+                <Metric label="睡眠" value={privateDisplayMode ? "記録あり" : `${record.sleepHours}h`} />
               </div>
-              <p className="record-snippet"><strong>出来事:</strong> {shortText(record.events)}</p>
-              <p className="record-snippet"><strong>メモ:</strong> {shortText(record.memo)}</p>
+              <p className="record-snippet"><strong>出来事:</strong> {privateDisplayMode ? "メモは非表示です" : shortText(record.events)}</p>
+              <p className="record-snippet"><strong>メモ:</strong> {privateDisplayMode ? "メモは非表示です" : shortText(record.memo)}</p>
               <div className="card-actions">
                 <button className="secondary-action" onClick={() => onDetail({ kind: "daily", record })}>詳細</button>
                 <button className="secondary-action" onClick={() => onEditDaily(record)}>編集</button>
@@ -1232,12 +1552,12 @@ function RecordsScreen({
               </div>
               <TagList tags={log.stateTags} empty="状態タグなし" />
               <div className="compact-metrics">
-                <Metric label="強さ" value={`${log.intensity}/10`} />
+                <Metric label="強さ" value={privateDisplayMode ? "記録あり" : `${log.intensity}/10`} />
                 <Metric label="場所" value={log.place} />
                 <Metric label="変化" value={log.afterChange} />
               </div>
-              <p className="record-snippet"><strong>きっかけ:</strong> {shortText(log.triggers.join("、"))}</p>
-              <p className="record-snippet"><strong>メモ:</strong> {shortText(log.memo)}</p>
+              <p className="record-snippet"><strong>きっかけ:</strong> {privateDisplayMode ? "メモは非表示です" : shortText(log.triggers.join("、"))}</p>
+              <p className="record-snippet"><strong>メモ:</strong> {privateDisplayMode ? "メモは非表示です" : shortText(log.memo)}</p>
               <div className="card-actions">
                 <button className="secondary-action" onClick={() => onDetail({ kind: "sudden", record: log })}>詳細</button>
                 <button className="secondary-action" onClick={() => onEditSudden(log)}>編集</button>
@@ -2295,6 +2615,81 @@ function statusFromLabel(label: string): ConsultationStatus {
   return consultationStatuses.find((status) => statusLabel(status) === label) || "draft";
 }
 
+function defaultPrivacySettings(): PrivacySettings {
+  return {
+    isLockEnabled: false,
+    passcodeHash: "",
+    autoLockMinutes: 5,
+    privateDisplayMode: false,
+    updatedAt: nowIso(),
+  };
+}
+
+function normalizePrivacySettings(settings: Partial<PrivacySettings>): PrivacySettings {
+  return {
+    isLockEnabled: Boolean(settings.isLockEnabled && settings.passcodeHash),
+    passcodeHash: settings.passcodeHash || "",
+    autoLockMinutes: normalizeAutoLock(settings.autoLockMinutes),
+    privateDisplayMode: Boolean(settings.privateDisplayMode),
+    updatedAt: settings.updatedAt || nowIso(),
+  };
+}
+
+function normalizeImportedPrivacySettings(settings: BackupPrivacySettings | undefined, current: PrivacySettings): PrivacySettings {
+  if (!settings) return current;
+  return {
+    ...current,
+    isLockEnabled: false,
+    passcodeHash: "",
+    autoLockMinutes: normalizeAutoLock(settings.autoLockMinutes),
+    privateDisplayMode: Boolean(settings.privateDisplayMode),
+    updatedAt: nowIso(),
+  };
+}
+
+function toBackupPrivacySettings(settings: PrivacySettings): BackupPrivacySettings {
+  return {
+    isLockEnabled: false,
+    autoLockMinutes: settings.autoLockMinutes,
+    privateDisplayMode: settings.privateDisplayMode,
+    passcodeIncluded: false,
+    updatedAt: settings.updatedAt,
+  };
+}
+
+function normalizeAutoLock(value: unknown): AutoLockMinutes {
+  return [1, 5, 15, 30, 0].includes(value as number) ? (value as AutoLockMinutes) : 5;
+}
+
+function autoLockLabel(value: AutoLockMinutes) {
+  if (value === 0) return "自動ロックしない";
+  return `${value}分`;
+}
+
+function autoLockFromLabel(label: string): AutoLockMinutes {
+  if (label === "1分") return 1;
+  if (label === "15分") return 15;
+  if (label === "30分") return 30;
+  if (label === "自動ロックしない") return 0;
+  return 5;
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+async function hashPasscode(passcode: string) {
+  const text = `self-compass-lock:${passcode}`;
+  if (crypto.subtle) {
+    const data = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  let hash = 5381;
+  for (const char of text) hash = (hash * 33) ^ char.charCodeAt(0);
+  return `fallback-${(hash >>> 0).toString(16)}`;
+}
+
 function downloadBackup(backup: BackupData) {
   downloadTextFile(`mental-health-record-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json;charset=utf-8");
 }
@@ -2320,6 +2715,7 @@ function normalizeBackupData(data: unknown): BackupData {
       selfCarePlans: [],
       selfCareLogs: [],
       consultationNotes: [],
+      privacySettings: toBackupPrivacySettings(defaultPrivacySettings()),
     };
   }
 
@@ -2330,6 +2726,7 @@ function normalizeBackupData(data: unknown): BackupData {
     selfCarePlans?: Partial<SelfCarePlan>[];
     selfCareLogs?: Partial<SelfCareLog>[];
     consultationNotes?: Partial<ConsultationNote>[];
+    privacySettings?: BackupPrivacySettings;
     daily?: Partial<DailyRecord>[];
     sudden?: Partial<SuddenLog>[];
   };
@@ -2347,6 +2744,13 @@ function normalizeBackupData(data: unknown): BackupData {
     selfCarePlans: Array.isArray(plans) ? plans.map(normalizeSelfCarePlan) : [],
     selfCareLogs: Array.isArray(logs) ? logs.map(normalizeSelfCareLog) : [],
     consultationNotes: Array.isArray(notes) ? notes.map(normalizeConsultationNote) : [],
+    privacySettings: source.privacySettings ? {
+      isLockEnabled: false,
+      autoLockMinutes: normalizeAutoLock(source.privacySettings.autoLockMinutes),
+      privateDisplayMode: Boolean(source.privacySettings.privateDisplayMode),
+      passcodeIncluded: false,
+      updatedAt: source.privacySettings.updatedAt || nowIso(),
+    } : toBackupPrivacySettings(defaultPrivacySettings()),
   };
 }
 
