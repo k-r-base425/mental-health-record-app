@@ -30,15 +30,16 @@ type DailyRecord = {
 type SuddenLog = {
   id: string;
   occurredAt: string;
-  stateType: string;
+  stateTags: string[];
+  stateType?: string;
   intensity: number;
-  riskLevel: RiskLevel;
+  riskLevel?: RiskLevel;
   triggers: string[];
   place: string;
   symptoms: string[];
   thoughts: string;
   actions: string[];
-  afterChange: "変わらない" | "少し落ち着いた" | "かなり落ち着いた" | "悪化した";
+  afterChange: "変わらない" | "少し落ち着いた" | "かなり落ち着いた" | "落ち着かなかった";
   memo: string;
   createdAt: string;
   updatedAt: string;
@@ -56,12 +57,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
 const newId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
-const stateTypes = ["強い不安", "パニック", "怒り", "涙が止まらない", "無気力", "焦り", "孤独感", "希死念慮", "自傷衝動", "過食衝動", "その他"];
+const stateTagOptions = ["不安感", "そわそわ", "いらだち", "涙が出る", "動きにくさ", "焦り", "ひとり感", "考えすぎ", "身体の重さ", "眠気", "食べたい衝動", "自分を責める感覚", "命に関わる考え", "自分を傷つけたい感覚", "その他"];
 const triggerOptions = ["仕事", "LINE・メッセージ", "SNS", "家族", "恋人・パートナー", "友人", "体調不良", "睡眠不足", "天気", "お金", "将来への不安", "理由が分からない", "その他"];
 const placeOptions = ["自宅", "外", "職場", "車内", "電車", "店", "その他"];
 const symptomOptions = ["動悸", "息苦しさ", "胸の圧迫感", "吐き気", "頭痛", "腹痛", "震え", "涙", "だるさ", "その他"];
 const actionOptions = ["寝た", "散歩した", "深呼吸した", "入浴した", "誰かに連絡した", "薬を飲んだ", "食べた", "泣いた", "何もしなかった", "その他"];
-const dangerWords = ["死にたい", "消えたい", "自傷", "もう無理", "薬を大量に飲む", "飛び降りる", "首を吊る"];
+const supportTags = ["命に関わる考え", "自分を傷つけたい感覚"];
+const supportWords = ["死にたい", "消えたい", "自傷", "薬を大量に飲む", "飛び降りる", "首を吊る", "生きていたくない"];
 
 function readStorage<T>(key: string): T[] {
   try {
@@ -245,7 +247,7 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden }: { dailyRec
       </section>
 
       <div className="action-stack">
-        <button className="urgent-btn" onClick={onSudden}>今つらい・突発ログを記録</button>
+        <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
         <button className="primary-btn" onClick={onDaily}>今日の記録をする</button>
       </div>
 
@@ -289,7 +291,7 @@ function RecordsScreen({
     <section>
       <header className="page-head">
         <div>
-          <p className="eyebrow">見返す・直す・消す</p>
+          <p className="eyebrow">確認・調整</p>
           <h1>記録一覧</h1>
         </div>
       </header>
@@ -332,7 +334,7 @@ function RecordsScreen({
 
       {tab === "sudden" && (
         <div className="record-list">
-          {sortedSudden.length === 0 && <EmptyState text="まだ突発ログはありません。急な不調があったときに記録できます。" />}
+          {sortedSudden.length === 0 && <EmptyState text="まだ突発ログはありません。急な状態の変化があったときに記録できます。" />}
           {sortedSudden.map((log) => (
             <article className="record-card" key={log.id}>
               <div className="record-card-head">
@@ -340,15 +342,15 @@ function RecordsScreen({
                   <p className="label">発生日時</p>
                   <h2>{formatDateTime(log.occurredAt)}</h2>
                 </div>
-                <span className={log.riskLevel === "高" ? "badge danger" : "badge"}>危険度 {log.riskLevel}</span>
+                <span className="badge">突発ログ</span>
               </div>
+              <TagList tags={log.stateTags} empty="状態タグなし" />
               <div className="compact-metrics">
-                <Metric label="状態" value={log.stateType} />
                 <Metric label="強さ" value={`${log.intensity}/10`} />
                 <Metric label="場所" value={log.place} />
                 <Metric label="変化" value={log.afterChange} />
               </div>
-              <p className="record-snippet"><strong>直前:</strong> {shortText(log.triggers.join("、"))}</p>
+              <p className="record-snippet"><strong>きっかけ:</strong> {shortText(log.triggers.join("、"))}</p>
               <p className="record-snippet"><strong>メモ:</strong> {shortText(log.memo)}</p>
               <div className="card-actions">
                 <button className="secondary-action" onClick={() => onDetail({ kind: "sudden", record: log })}>詳細</button>
@@ -431,9 +433,8 @@ function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; 
     initial || {
       id: newId(),
       occurredAt: nowIso(),
-      stateType: "強い不安",
+      stateTags: [],
       intensity: 5,
-      riskLevel: "低",
       triggers: [],
       place: "自宅",
       symptoms: [],
@@ -445,33 +446,32 @@ function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; 
       updatedAt: nowIso(),
     },
   );
-  const showDanger = form.riskLevel === "高" || ["希死念慮", "自傷衝動"].includes(form.stateType) || dangerWords.some((word) => `${form.memo} ${form.thoughts}`.includes(word));
+  const showSupport = form.stateTags.some((tag) => supportTags.includes(tag)) || supportWords.some((word) => `${form.memo} ${form.thoughts}`.includes(word));
 
   return (
     <section>
-      <FormHead title={initial ? "突発ログを編集中" : "突発ログ"} sub="急につらくなった瞬間だけを記録します" onCancel={onCancel} />
-      {showDanger && <DangerNotice />}
+      <FormHead title={initial ? "突発ログを編集中" : "突発ログ"} sub="急な状態の変化を短く記録します" onCancel={onCancel} />
+      {showSupport && <SupportNotice />}
       <div className="form-card">
         <FormSection title="まず記録">
           <label className="field">
             <span>発生日時</span>
             <input type="datetime-local" value={toDateTimeLocal(form.occurredAt)} onChange={(event) => setForm({ ...form, occurredAt: new Date(event.target.value).toISOString() })} />
           </label>
-          <Choice label="状態の種類" options={stateTypes} value={form.stateType} onChange={(stateType) => setForm({ ...form, stateType })} />
+          <MultiChoice label="状態タグ" options={stateTagOptions} values={form.stateTags} onChange={(stateTags) => setForm({ ...form, stateTags })} />
           <ScoreField label="強さ" value={form.intensity} onChange={(intensity) => setForm({ ...form, intensity })} />
-          <Choice label="危険度" options={["低", "中", "高"]} value={form.riskLevel} onChange={(riskLevel) => setForm({ ...form, riskLevel: riskLevel as RiskLevel })} />
         </FormSection>
 
         <FormSection title="状況">
           <MultiChoice label="直前にあったこと" options={triggerOptions} values={form.triggers} onChange={(triggers) => setForm({ ...form, triggers })} />
           <Choice label="場所" options={placeOptions} value={form.place} onChange={(place) => setForm({ ...form, place })} />
-          <MultiChoice label="身体症状" options={symptomOptions} values={form.symptoms} onChange={(symptoms) => setForm({ ...form, symptoms })} />
+          <MultiChoice label="身体のサイン" options={symptomOptions} values={form.symptoms} onChange={(symptoms) => setForm({ ...form, symptoms })} />
           <TextArea label="頭に浮かんだ言葉・思考" value={form.thoughts} onChange={(thoughts) => setForm({ ...form, thoughts })} />
         </FormSection>
 
         <FormSection title="対処">
           <MultiChoice label="実際に取った行動" options={actionOptions} values={form.actions} onChange={(actions) => setForm({ ...form, actions })} />
-          <Choice label="対処後の変化" options={["変わらない", "少し落ち着いた", "かなり落ち着いた", "悪化した"]} value={form.afterChange} onChange={(afterChange) => setForm({ ...form, afterChange: afterChange as SuddenLog["afterChange"] })} />
+          <Choice label="対処後の変化" options={["変わらない", "少し落ち着いた", "かなり落ち着いた", "落ち着かなかった"]} value={form.afterChange} onChange={(afterChange) => setForm({ ...form, afterChange: afterChange as SuddenLog["afterChange"] })} />
         </FormSection>
 
         <FormSection title="任意メモ">
@@ -490,8 +490,7 @@ function Analysis({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; s
   const exerciseMood = groupedAverage(dailyRecords, (record) => (record.exercise === "なし" ? "運動なし" : "運動あり"), (record) => record.mood);
   const sleepLow = dailyRecords.filter((record) => record.sleepHours < 6);
   const sleepOk = dailyRecords.filter((record) => record.sleepHours >= 6);
-  const suddenByType = countBy(suddenLogs, (log) => log.stateType);
-  const riskCounts = countBy(suddenLogs, (log) => log.riskLevel);
+  const suddenByTag = countFlat(suddenLogs.flatMap((log) => log.stateTags));
   const triggerCounts = countFlat(suddenLogs.flatMap((log) => log.triggers));
   const symptomCounts = countFlat(suddenLogs.flatMap((log) => log.symptoms));
   const helpfulActions = countFlat(suddenLogs.filter((log) => log.afterChange.includes("落ち着いた")).flatMap((log) => log.actions));
@@ -504,7 +503,7 @@ function Analysis({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; s
         <p className="eyebrow">記録上の傾向です</p>
         <h1>分析</h1>
       </header>
-      <p className="soft-text">断定ではなく、関連している可能性があります。医師や専門家に相談する材料として使えます。</p>
+      <p className="soft-text">記録上の傾向です。関連している可能性があります。参考情報として見てください。医師や専門家に相談する材料として使えます。</p>
 
       <section className="section-block">
         <h2>日々の記録</h2>
@@ -539,10 +538,9 @@ function Analysis({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; s
               <Metric label="回数" value={`${suddenLogs.length}件`} />
               <Metric label="平均強さ" value={formatAverage(suddenLogs.map((log) => log.intensity))} />
             </div>
-            <KeyValueList title="状態の種類ごとの回数" items={suddenByType} suffix="件" />
-            <KeyValueList title="危険度別の件数" items={riskCounts} suffix="件" />
-            <KeyValueList title="よく出る直前の出来事" items={triggerCounts} suffix="件" />
-            <KeyValueList title="よく出る身体症状" items={symptomCounts} suffix="件" />
+            <KeyValueList title="よく出る状態タグ" items={suddenByTag} suffix="件" />
+            <KeyValueList title="よく出るきっかけ" items={triggerCounts} suffix="件" />
+            <KeyValueList title="よく出る身体のサイン" items={symptomCounts} suffix="件" />
             <KeyValueList title="効果がありそうだった対処法" items={helpfulActions} suffix="件" />
             <KeyValueList title="突発ログが多い曜日" items={dayCounts} suffix="件" />
             <KeyValueList title="突発ログが多い時間帯" items={hourCounts} suffix="件" />
@@ -559,11 +557,11 @@ function Report({ dailyRecords, suddenLogs }: { dailyRecords: DailyRecord[]; sud
   const daily = dailyRecords.filter((record) => daysAgo(record.date) < period);
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
   const hasFewRecords = daily.length < 3 && sudden.length < 2;
-  const topState = firstKey(countBy(sudden, (log) => log.stateType));
+  const topTags = countFlat(sudden.flatMap((log) => log.stateTags)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topTriggers = countFlat(sudden.flatMap((log) => log.triggers)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topSymptoms = countFlat(sudden.flatMap((log) => log.symptoms)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topActions = countFlat(sudden.filter((log) => log.afterChange.includes("落ち着いた")).flatMap((log) => log.actions)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
-  const toughDays = daily.filter((record) => record.mood <= 3 || record.anxiety >= 8 || record.fatigue >= 8).map((record) => record.date).join("、") || "目立つ記録なし";
+  const waveDays = daily.filter((record) => record.mood <= 3 || record.anxiety >= 8 || record.fatigue >= 8).map((record) => record.date).join("、") || "目立つ記録なし";
 
   const fewRecordsNote = hasFewRecords ? "記録が少ないため参考程度です。\n" : "";
   const summary = `過去${period}日間のセルフ記録です。このアプリは診断・治療・服薬指示を行うものではありません。
@@ -572,16 +570,16 @@ ${fewRecordsNote}
 気分平均: ${formatAverage(daily.map((record) => record.mood))}/10
 不安平均: ${formatAverage(daily.map((record) => record.anxiety))}/10
 睡眠平均: ${formatAverage(daily.map((record) => record.sleepHours))}時間
-不調が強かった日: ${toughDays}
-突発ログの回数: ${sudden.length}件
-突発ログで多かった状態: ${topState}
-多かったトリガー: ${topTriggers}
-多かった身体症状: ${topSymptoms}
+状態の波が大きかった日: ${waveDays}
+期間内の突発ログ回数: ${sudden.length}件
+多かった状態タグ: ${topTags}
+多かったきっかけ: ${topTriggers}
+多かった身体のサイン: ${topSymptoms}
 効果がありそうだった対処: ${topActions}
-医師に相談したいこと: ${doctorMemo || "未記入"}`;
+相談時に伝えたいこと: ${doctorMemo || "未記入"}`;
 
   const prompt = `以下はメンタルヘルスのセルフ記録です。診断や治療判断、服薬指示はしないでください。
-記録から、記録上の傾向、関連している可能性があるトリガー、生活面で見直せそうな点、医師や専門家に相談すべき点を分けて整理してください。
+記録から、記録上の傾向、関連している可能性があるきっかけ、生活面で見直せそうな点、医師や専門家に相談する材料になりそうな点を分けて整理してください。
 
 ${summary}`;
 
@@ -593,7 +591,7 @@ ${summary}`;
       </header>
       {hasFewRecords && <div className="notice">記録が少ないため参考程度です。無理に分析せず、共有用の整理メモとして使えます。</div>}
       <Choice label="期間" options={["7日間", "14日間", "30日間"]} value={`${period}日間`} onChange={(value) => setPeriod(Number(value.replace("日間", "")))} />
-      <TextArea label="医師に相談したいことメモ" value={doctorMemo} onChange={setDoctorMemo} />
+      <TextArea label="相談時に伝えたいことメモ" value={doctorMemo} onChange={setDoctorMemo} />
       <ReportBox title="医師に見せる用の文章" text={summary} />
       <ReportBox title="AI相談用プロンプト" text={prompt} />
     </section>
@@ -648,7 +646,7 @@ function SuddenHistory({ records, onEdit, onDelete }: { records: SuddenLog[]; on
         <article className="history-item" key={record.id}>
           <div>
             <strong>{new Date(record.occurredAt).toLocaleString("ja-JP")}</strong>
-            <p>{record.stateType} ・ 強さ {record.intensity}/10 ・ 危険度 {record.riskLevel}</p>
+            <p>{joinTags(record.stateTags)} ・ 強さ {record.intensity}/10</p>
           </div>
           <div className="row-actions">
             <button onClick={() => onEdit(record)}>編集</button>
@@ -682,12 +680,11 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
         ]
       : [
           ["発生日時", formatDateTime(item.record.occurredAt)],
-          ["状態の種類", item.record.stateType],
+          ["状態タグ", joinTags(item.record.stateTags)],
           ["強さ", `${item.record.intensity}/10`],
-          ["危険度", item.record.riskLevel],
-          ["直前にあったこと", item.record.triggers.join("、") || "未記入"],
+          ["きっかけ", item.record.triggers.join("、") || "未記入"],
           ["場所", item.record.place],
-          ["身体症状", item.record.symptoms.join("、") || "未記入"],
+          ["身体のサイン", item.record.symptoms.join("、") || "未記入"],
           ["頭に浮かんだ言葉・思考", item.record.thoughts || "未記入"],
           ["実際に取った行動", item.record.actions.join("、") || "未記入"],
           ["対処後の変化", item.record.afterChange],
@@ -825,10 +822,21 @@ function TextArea({ label, helper, value, onChange }: { label: string; helper?: 
   );
 }
 
-function DangerNotice() {
+function SupportNotice() {
   return (
     <div className="danger-notice">
-      今は一人で抱え込まないでください。命に関わる危険がある場合は、すぐに119番、近くの救急外来、または信頼できる人に連絡してください。このアプリは医療機関の代わりにはなれません。
+      この記録には、ひとりで抱え込まない方がよい内容が含まれている可能性があります。命に関わる可能性がある場合は、すぐに119番、近くの救急外来、または信頼できる人に連絡してください。このアプリは医療機関や専門家の支援を代わりに行うものではありません。
+    </div>
+  );
+}
+
+function TagList({ tags, empty }: { tags: string[]; empty: string }) {
+  if (!tags.length) return <p className="tag-empty">{empty}</p>;
+  return (
+    <div className="tag-list">
+      {tags.map((tag) => (
+        <span key={tag}>{tag}</span>
+      ))}
     </div>
   );
 }
@@ -936,22 +944,53 @@ function normalizeDailyRecord(record: Partial<DailyRecord>): DailyRecord {
 
 function normalizeSuddenLog(log: Partial<SuddenLog>): SuddenLog {
   const timestamp = log.createdAt || nowIso();
+  const stateTags = normalizeStateTags(log.stateTags, log.stateType);
   return {
     id: log.id || newId(),
     occurredAt: log.occurredAt || nowIso(),
-    stateType: log.stateType || "強い不安",
+    stateTags,
+    stateType: log.stateType,
     intensity: log.intensity ?? 5,
-    riskLevel: log.riskLevel || "低",
+    riskLevel: log.riskLevel,
     triggers: log.triggers || [],
     place: log.place || "自宅",
     symptoms: log.symptoms || [],
     thoughts: log.thoughts || "",
     actions: log.actions || [],
-    afterChange: log.afterChange || "変わらない",
+    afterChange: normalizeAfterChange(log.afterChange),
     memo: log.memo || "",
     createdAt: timestamp,
     updatedAt: log.updatedAt || timestamp,
   };
+}
+
+function normalizeStateTags(tags?: string[], legacyState?: string) {
+  const source = tags?.length ? tags : legacyState ? [legacyState] : [];
+  return source.map(mapLegacyStateTag).filter(Boolean);
+}
+
+function mapLegacyStateTag(tag: string) {
+  const map: Record<string, string> = {
+    強い不安: "不安感",
+    パニック: "そわそわ",
+    怒り: "いらだち",
+    涙が止まらない: "涙が出る",
+    無気力: "動きにくさ",
+    孤独感: "ひとり感",
+    希死念慮: "命に関わる考え",
+    自傷衝動: "自分を傷つけたい感覚",
+    過食衝動: "食べたい衝動",
+  };
+  return map[tag] || tag;
+}
+
+function normalizeAfterChange(value?: SuddenLog["afterChange"] | "悪化した") {
+  if (value === "悪化した") return "落ち着かなかった";
+  return value || "変わらない";
+}
+
+function joinTags(tags: string[]) {
+  return tags.length ? tags.join("、") : "未記入";
 }
 
 function shortText(text: string) {
