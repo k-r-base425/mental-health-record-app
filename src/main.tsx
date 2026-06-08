@@ -67,6 +67,16 @@ type SelfCareLog = {
   createdAt: string;
 };
 
+type Insight = {
+  id: string;
+  title: string;
+  description: string;
+  relatedCount: number;
+  action: string;
+  note: string;
+  group: "daily" | "sudden" | "selfcare";
+};
+
 type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report" | "data" | "selfcare";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
@@ -271,6 +281,7 @@ function App() {
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
             selfCarePlans={selfCarePlans}
+            selfCareLogs={selfCareLogs}
             flash={flash}
             onCareDone={setLoggingPlan}
             onSelfCare={() => {
@@ -388,6 +399,7 @@ function Home({
   dailyRecords,
   suddenLogs,
   selfCarePlans,
+  selfCareLogs,
   flash,
   onDaily,
   onSudden,
@@ -398,6 +410,7 @@ function Home({
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCarePlans: SelfCarePlan[];
+  selfCareLogs: SelfCareLog[];
   flash: string;
   onDaily: () => void;
   onSudden: () => void;
@@ -409,6 +422,7 @@ function Home({
   const weekRecords = dailyRecords.filter((record) => daysAgo(record.date) <= 6);
   const weekLogs = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) <= 6);
   const todayPlans = selfCarePlans.slice(0, 3);
+  const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs)[0];
 
   return (
     <section>
@@ -446,6 +460,18 @@ function Home({
         <button className="secondary-btn no-margin" onClick={onSelfCare}>セルフケア</button>
         <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
       </div>
+
+      <section className="section-block">
+        <h2>今日の気づき</h2>
+        {todayInsight ? (
+          <article className="mini-insight">
+            <strong>{todayInsight.title}</strong>
+            <p>{todayInsight.description}</p>
+          </article>
+        ) : (
+          <p className="soft-text">記録が増えると、睡眠・天気・外出などとの関係が見えやすくなります。</p>
+        )}
+      </section>
 
       <section className="section-block">
         <h2>今日の小さな一手</h2>
@@ -1032,6 +1058,7 @@ function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; 
 function Analysis({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[] }) {
   const sortedDaily = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date));
   const highDaily = sortedDaily.slice(-14);
+  const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs);
   const weatherMood = groupedAverage(dailyRecords, (record) => record.weather, (record) => record.mood);
   const exerciseMood = groupedAverage(dailyRecords, (record) => (record.exercise === "なし" ? "運動なし" : "運動あり"), (record) => record.mood);
   const sleepLow = dailyRecords.filter((record) => record.sleepHours < 6);
@@ -1052,6 +1079,18 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: Da
         <h1>分析</h1>
       </header>
       <p className="soft-text">記録上の傾向です。関連している可能性があります。参考情報として見てください。医師や専門家に相談する材料として使えます。</p>
+
+      <section className="section-block insights-section">
+        <h2>記録から見える傾向</h2>
+        <p className="soft-text">ここに表示される内容は、記録上の傾向です。診断や治療判断ではなく、自分を知るための参考情報として見てください。</p>
+        {insights.length === 0 ? (
+          <div className="notice">まだ記録が少ないため、傾向は参考程度です。もう少し記録が増えると、状態の波が見えやすくなります。</div>
+        ) : (
+          <div className="insight-list">
+            {insights.map((insight) => <InsightCard insight={insight} key={insight.id} />)}
+          </div>
+        )}
+      </section>
 
       <section className="section-block">
         <h2>日々の記録</h2>
@@ -1121,13 +1160,17 @@ function Report({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: Dail
   const [doctorMemo, setDoctorMemo] = useState("");
   const daily = dailyRecords.filter((record) => daysAgo(record.date) < period);
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
-  const hasFewRecords = daily.length < 3 && sudden.length < 2;
+  const careInPeriod = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
+  const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3;
+  const reportInsights = calculateInsights(daily, sudden, careInPeriod);
+  const insightSummary = reportInsights.length
+    ? reportInsights.slice(0, 5).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
+    : "記録が少ないため、傾向は参考程度です。もう少し記録が増えると、睡眠・天気・外出・きっかけ・セルフケアとの関係が見えやすくなります。";
   const topTags = countFlat(sudden.flatMap((log) => log.stateTags)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topTriggers = countFlat(sudden.flatMap((log) => log.triggers)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topSymptoms = countFlat(sudden.flatMap((log) => log.symptoms)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topActions = countFlat(sudden.filter((log) => log.afterChange.includes("落ち着いた")).flatMap((log) => log.actions)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const waveDays = daily.filter((record) => record.mood <= 3 || record.anxiety >= 8 || record.fatigue >= 8).map((record) => record.date).join("、") || "目立つ記録なし";
-  const careInPeriod = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
   const topCare = countBy(careInPeriod, (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const settledCare = countBy(careInPeriod.filter((log) => log.result === "少し整った"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const notFitCare = countBy(careInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
@@ -1148,10 +1191,17 @@ ${fewRecordsNote}
 よく使ったセルフケア: ${topCare}
 実行後に整ったと感じた行動: ${settledCare}
 今は合わなかった行動: ${notFitCare}
+
+記録上見えている傾向:
+${insightSummary}
+
 相談時に伝えたいこと: ${doctorMemo || "未記入"}`;
 
   const prompt = `以下はメンタルヘルスのセルフ記録です。診断や治療判断、服薬指示はしないでください。
-記録から、記録上の傾向、関連している可能性があるきっかけ、生活面で見直せそうな点、医師や専門家に相談する材料になりそうな点を分けて整理してください。
+記録上の傾向として整理してください。
+医師や専門家に相談すべき点を分けてください。
+生活面で見直せそうな候補は、断定せず「可能性」「参考情報」として提示してください。
+睡眠、天気、外出、突発ログ、セルフケアの要約も含めてください。
 
 ${summary}`;
 
@@ -1464,6 +1514,24 @@ function KeyValueList({ title, items, suffix }: { title: string; items: [string,
   );
 }
 
+function InsightCard({ insight }: { insight: Insight }) {
+  return (
+    <article className="insight-card">
+      <div className="insight-card-head">
+        <span>{insight.group === "daily" ? "日々の記録" : insight.group === "sudden" ? "突発ログ" : "セルフケア"}</span>
+        <strong>{insight.relatedCount}件</strong>
+      </div>
+      <h3>{insight.title}</h3>
+      <p>{insight.description}</p>
+      <div className="insight-action">
+        <span>参考アクション</span>
+        <p>{insight.action}</p>
+      </div>
+      <small>{insight.note}</small>
+    </article>
+  );
+}
+
 function formatAverage(values: number[]) {
   const valid = values.filter((value) => Number.isFinite(value));
   if (!valid.length) return "-";
@@ -1499,6 +1567,272 @@ function groupedAverage<T>(items: T[], keyer: (item: T) => string, valuer: (item
     groups.set(key, [...(groups.get(key) || []), valuer(item)]);
   });
   return [...groups.entries()].map(([key, values]) => [key, formatAverage(values)]);
+}
+
+function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[]) {
+  return [
+    ...calculateSleepInsights(dailyRecords),
+    ...calculateWeatherInsights(dailyRecords),
+    ...calculateActivityInsights(dailyRecords),
+    ...calculateSocialInsights(dailyRecords),
+    ...calculateSuddenLogInsights(suddenLogs),
+    ...calculateSelfCareInsights(selfCareLogs),
+  ].slice(0, 8);
+}
+
+function calculateSleepInsights(records: DailyRecord[]): Insight[] {
+  const recent = records.filter((record) => daysAgo(record.date) < 30);
+  if (recent.length < 3) return [];
+  const short = recent.filter((record) => record.sleepHours < 5);
+  const mid = recent.filter((record) => record.sleepHours >= 5 && record.sleepHours < 7);
+  const long = recent.filter((record) => record.sleepHours >= 7);
+  const usual = [...mid, ...long];
+  if (short.length < 2 || usual.length < 2) return [];
+
+  const shortAnxiety = average(short.map((record) => record.anxiety));
+  const usualAnxiety = average(usual.map((record) => record.anxiety));
+  const shortFatigue = average(short.map((record) => record.fatigue));
+  const usualFatigue = average(usual.map((record) => record.fatigue));
+  const shortMood = average(short.map((record) => record.mood));
+  const usualMood = average(usual.map((record) => record.mood));
+  const hasWave = shortAnxiety - usualAnxiety >= 0.8 || shortFatigue - usualFatigue >= 0.8 || usualMood - shortMood >= 0.8;
+  if (!hasWave) return [];
+
+  return [{
+    id: "sleep-short",
+    group: "daily",
+    title: "睡眠が短い日は、状態の波が大きめに記録されています",
+    description: `過去30日間では、睡眠5時間未満の日が${short.length}件あります。不安感${shortAnxiety.toFixed(1)}/10、疲労${shortFatigue.toFixed(1)}/10、気分${shortMood.toFixed(1)}/10として記録されています。`,
+    relatedCount: short.length,
+    action: "睡眠時間、寝る前のスマホ、カフェイン、翌日の予定などを一緒に見直す材料にできます。",
+    note: "記録上の傾向です。原因を断定するものではありません。",
+  }];
+}
+
+function calculateWeatherInsights(records: DailyRecord[]): Insight[] {
+  const recent = records.filter((record) => daysAgo(record.date) < 30);
+  if (recent.length < 3) return [];
+  const overallMood = average(recent.map((record) => record.mood));
+  const overallAnxiety = average(recent.map((record) => record.anxiety));
+  const groups = groupItems(recent, (record) => record.weather);
+
+  return [...groups.entries()].flatMap(([weather, items]) => {
+    if (items.length < 2) return [];
+    const mood = average(items.map((record) => record.mood));
+    const anxiety = average(items.map((record) => record.anxiety));
+    if (overallMood - mood < 0.8 && anxiety - overallAnxiety < 0.8) return [];
+    return [{
+      id: `weather-${weather}`,
+      group: "daily" as const,
+      title: `${weather}の日は、状態の波が少し見えています`,
+      description: `過去30日間の${weather}の日は${items.length}件で、気分平均${mood.toFixed(1)}/10、不安感平均${anxiety.toFixed(1)}/10です。`,
+      relatedCount: items.length,
+      action: "天気、予定量、睡眠、外出しやすさを並べて見ると、相談時の材料にできます。",
+      note: "記録上の傾向です。天気だけが理由とは限りません。",
+    }];
+  }).slice(0, 2);
+}
+
+function calculateActivityInsights(records: DailyRecord[]): Insight[] {
+  const recent = records.filter((record) => daysAgo(record.date) < 30);
+  if (recent.length < 3) return [];
+  const insights: Insight[] = [];
+  const active = recent.filter((record) => record.exercise !== "なし");
+  const inactive = recent.filter((record) => record.exercise === "なし");
+  if (active.length >= 2 && inactive.length >= 2) {
+    const activeMood = average(active.map((record) => record.mood));
+    const inactiveMood = average(inactive.map((record) => record.mood));
+    const activeAnxiety = average(active.map((record) => record.anxiety));
+    const inactiveAnxiety = average(inactive.map((record) => record.anxiety));
+    if (Math.abs(activeMood - inactiveMood) >= 0.8 || Math.abs(activeAnxiety - inactiveAnxiety) >= 0.8) {
+      insights.push({
+        id: "activity-exercise",
+        group: "daily",
+        title: "体を動かした日と、状態の記録に違いがあります",
+        description: `運動ありの日は${active.length}件、運動なしの日は${inactive.length}件です。気分は${activeMood.toFixed(1)}と${inactiveMood.toFixed(1)}、不安感は${activeAnxiety.toFixed(1)}と${inactiveAnxiety.toFixed(1)}です。`,
+        relatedCount: active.length + inactive.length,
+        action: "散歩や軽い運動が合う日、休む方が合う日を分けて振り返れます。",
+        note: "関連している可能性があります。無理に増やす必要はありません。",
+      });
+    }
+  }
+
+  const outside = recent.filter((record) => record.wentOut === "あり");
+  const inside = recent.filter((record) => record.wentOut === "なし");
+  if (outside.length >= 2 && inside.length >= 2) {
+    const outsideMood = average(outside.map((record) => record.mood));
+    const insideMood = average(inside.map((record) => record.mood));
+    const outsideAnxiety = average(outside.map((record) => record.anxiety));
+    const insideAnxiety = average(inside.map((record) => record.anxiety));
+    if (Math.abs(outsideMood - insideMood) >= 0.8 || Math.abs(outsideAnxiety - insideAnxiety) >= 0.8) {
+      insights.push({
+        id: "activity-outside",
+        group: "daily",
+        title: "外出の有無と、状態の記録に違いがあります",
+        description: `外出ありの日は${outside.length}件、外出なしの日は${inside.length}件です。気分と不安感の平均に少し差が見えています。`,
+        relatedCount: outside.length + inside.length,
+        action: "外に出る時間、予定の重さ、帰宅後の疲れを一緒に見直す材料にできます。",
+        note: "記録上の傾向です。外出の良し悪しを決めるものではありません。",
+      });
+    }
+  }
+
+  const walks = recent.filter((record) => record.exercise === "散歩");
+  const nonWalks = recent.filter((record) => record.exercise !== "散歩");
+  if (walks.length >= 2 && nonWalks.length >= 2) {
+    const walkMood = average(walks.map((record) => record.mood));
+    const otherMood = average(nonWalks.map((record) => record.mood));
+    if (Math.abs(walkMood - otherMood) >= 0.8) {
+      insights.push({
+        id: "activity-walk",
+        group: "daily",
+        title: "散歩した日の気分記録に違いがあります",
+        description: `散歩した日は${walks.length}件で、気分平均は${walkMood.toFixed(1)}/10です。散歩していない日との違いが少し見えています。`,
+        relatedCount: walks.length,
+        action: "散歩の長さや時間帯を、合いやすい条件として見ていけます。",
+        note: "参考情報として見てください。必ず合うという意味ではありません。",
+      });
+    }
+  }
+  return insights.slice(0, 2);
+}
+
+function calculateSocialInsights(records: DailyRecord[]): Insight[] {
+  const recent = records.filter((record) => daysAgo(record.date) < 30);
+  if (recent.length < 3) return [];
+  const many = recent.filter((record) => record.socialContact === "多い" || record.socialContact === "普通");
+  const few = recent.filter((record) => record.socialContact === "少ない" || record.socialContact === "なし");
+  if (many.length < 2 || few.length < 2) return [];
+  const manyFatigue = average(many.map((record) => record.fatigue));
+  const fewFatigue = average(few.map((record) => record.fatigue));
+  const manyAnxiety = average(many.map((record) => record.anxiety));
+  const fewAnxiety = average(few.map((record) => record.anxiety));
+  if (Math.abs(manyFatigue - fewFatigue) < 0.8 && Math.abs(manyAnxiety - fewAnxiety) < 0.8) return [];
+  return [{
+    id: "social-contact",
+    group: "daily",
+    title: "人との接触量と、疲労・不安感の記録に違いがあります",
+    description: `接触が多め/普通の日は${many.length}件、少なめ/なしの日は${few.length}件です。疲労と不安感の平均に少し差があります。`,
+    relatedCount: many.length + few.length,
+    action: "会う人数、時間、休む時間の取り方を相談時の材料にできます。",
+    note: "人と会うことの良し悪しを判断するものではありません。",
+  }];
+}
+
+function calculateSuddenLogInsights(logs: SuddenLog[]): Insight[] {
+  const recent = logs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < 30);
+  if (recent.length < 3) return [];
+  const insights: Insight[] = [];
+  const topTrigger = countFlat(recent.flatMap((log) => log.triggers))[0];
+  const topTag = countFlat(recent.flatMap((log) => log.stateTags))[0];
+  const topSymptom = countFlat(recent.flatMap((log) => log.symptoms))[0];
+  const topDay = countBy(recent, (log) => ["日", "月", "火", "水", "木", "金", "土"][new Date(log.occurredAt).getDay()])[0];
+  const topHour = countBy(recent, (log) => `${new Date(log.occurredAt).getHours()}時台`)[0];
+
+  if (topTrigger && topTrigger[1] >= 2) {
+    insights.push({
+      id: "sudden-trigger",
+      group: "sudden",
+      title: "よく記録されるきっかけがあります",
+      description: `過去30日間では「${topTrigger[0]}」が${topTrigger[1]}件記録されています。状態の波と関連している可能性があります。`,
+      relatedCount: topTrigger[1],
+      action: "その前後の睡眠、予定、連絡量を一緒に見直す材料にできます。",
+      note: "原因を断定するものではありません。",
+    });
+  }
+  if (topTag && topTag[1] >= 2) {
+    insights.push({
+      id: "sudden-tag",
+      group: "sudden",
+      title: "よく出る状態タグがあります",
+      description: `「${topTag[0]}」が${topTag[1]}件記録されています。どんな場面で出やすいか振り返る材料にできます。`,
+      relatedCount: topTag[1],
+      action: "きっかけ、場所、身体のサインと並べて見ると整理しやすくなります。",
+      note: "記録上の傾向です。",
+    });
+  }
+  if (topSymptom && topSymptom[1] >= 2) {
+    insights.push({
+      id: "sudden-symptom",
+      group: "sudden",
+      title: "よく記録される身体のサインがあります",
+      description: `「${topSymptom[0]}」が${topSymptom[1]}件記録されています。早めに気づく合図として使える可能性があります。`,
+      relatedCount: topSymptom[1],
+      action: "出やすい身体のサインを、医師や専門家に伝える材料にできます。",
+      note: "診断ではなく、相談時の参考情報です。",
+    });
+  }
+  if (topDay && topHour && (topDay[1] >= 2 || topHour[1] >= 2)) {
+    insights.push({
+      id: "sudden-time",
+      group: "sudden",
+      title: "記録されやすい曜日や時間帯があります",
+      description: `${topDay[0]}曜日、または${topHour[0]}の記録がやや多めです。予定や休み方と関連している可能性があります。`,
+      relatedCount: Math.max(topDay[1], topHour[1]),
+      action: "その時間帯の前後に、予定を少し軽くする余地があるか見直せます。",
+      note: "参考情報として見てください。",
+    });
+  }
+  return insights.slice(0, 3);
+}
+
+function calculateSelfCareInsights(logs: SelfCareLog[]): Insight[] {
+  const recent = logs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < 30);
+  if (recent.length < 3) return [];
+  const insights: Insight[] = [];
+  const topCare = countBy(recent, (log) => log.title)[0];
+  const settled = countBy(recent.filter((log) => log.result === "少し整った"), (log) => log.title)[0];
+  const notFit = countBy(recent.filter((log) => log.result === "今は合わなかった"), (log) => log.title)[0];
+
+  if (topCare && topCare[1] >= 2) {
+    insights.push({
+      id: "care-frequent",
+      group: "selfcare",
+      title: "よく使っているセルフケアがあります",
+      description: `「${topCare[0]}」が${topCare[1]}件記録されています。自分が選びやすい整え方として見えてきています。`,
+      relatedCount: topCare[1],
+      action: "どんな状態の日に選びやすいか、突発ログや日々の記録と一緒に見られます。",
+      note: "記録上の傾向です。効果を断定するものではありません。",
+    });
+  }
+  if (settled && settled[1] >= 2) {
+    insights.push({
+      id: "care-settled",
+      group: "selfcare",
+      title: "整いやすい可能性があるセルフケアがあります",
+      description: `「${settled[0]}」は、実行後に「少し整った」と${settled[1]}件記録されています。`,
+      relatedCount: settled[1],
+      action: "合いやすい条件や時間帯をメモしておくと、相談時の材料になります。",
+      note: "合いやすい可能性があります。必ず同じ結果になるとは限りません。",
+    });
+  }
+  if (notFit && notFit[1] >= 2) {
+    insights.push({
+      id: "care-not-fit",
+      group: "selfcare",
+      title: "今の状態では合いにくい日があるかもしれません",
+      description: `「${notFit[0]}」は、「今は合わなかった」と${notFit[1]}件記録されています。`,
+      relatedCount: notFit[1],
+      action: "タイミングや負担感を見直し、別の小さな行動候補も並べておけます。",
+      note: "参考情報として見てください。無理に続ける必要はありません。",
+    });
+  }
+  return insights.slice(0, 3);
+}
+
+function groupItems<T>(items: T[], keyer: (item: T) => string) {
+  const groups = new Map<string, T[]>();
+  items.forEach((item) => {
+    const key = keyer(item);
+    groups.set(key, [...(groups.get(key) || []), item]);
+  });
+  return groups;
+}
+
+function average(values: number[]) {
+  const valid = values.filter((value) => Number.isFinite(value));
+  if (!valid.length) return 0;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
 }
 
 function firstKey(items: [string, number][]) {
