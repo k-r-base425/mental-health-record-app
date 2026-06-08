@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -45,13 +45,23 @@ type SuddenLog = {
   updatedAt: string;
 };
 
-type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report";
+type Screen = "home" | "daily" | "sudden" | "records" | "analysis" | "report" | "data";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
-type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string };
+type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "all" };
+type BackupData = {
+  app: {
+    name: string;
+    version: string;
+    exportedAt: string;
+  };
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+};
 
 const dailyStorageKey = "self-compass-daily-records";
 const suddenStorageKey = "self-compass-sudden-logs";
+const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
@@ -93,6 +103,7 @@ function App() {
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
   const [flash, setFlash] = useState("");
 
   const saveDaily = (record: DailyRecord) => {
@@ -137,6 +148,28 @@ function App() {
     setFlash("突発ログを削除しました");
   };
 
+  const importBackup = (backup: BackupData) => {
+    setDailyRecords(backup.dailyRecords);
+    setSuddenLogs(backup.suddenLogs);
+    localStorage.setItem(dailyStorageKey, JSON.stringify(backup.dailyRecords));
+    localStorage.setItem(suddenStorageKey, JSON.stringify(backup.suddenLogs));
+    setPendingImport(null);
+    setDetailItem(null);
+    setFlash("バックアップを読み込みました");
+    setScreen("data");
+  };
+
+  const deleteAllData = () => {
+    setDailyRecords([]);
+    setSuddenLogs([]);
+    localStorage.setItem(dailyStorageKey, JSON.stringify([]));
+    localStorage.setItem(suddenStorageKey, JSON.stringify([]));
+    setPendingDelete(null);
+    setDetailItem(null);
+    setFlash("保存されている記録を削除しました");
+    setScreen("data");
+  };
+
   return (
     <div className="app-shell">
       <main className="screen">
@@ -145,6 +178,10 @@ function App() {
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
             flash={flash}
+            onData={() => {
+              setFlash("");
+              setScreen("data");
+            }}
             onDaily={() => {
               setFlash("");
               setEditingDaily(dailyRecords.find((record) => record.date === today()) || null);
@@ -181,6 +218,15 @@ function App() {
         )}
         {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} />}
         {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} />}
+        {screen === "data" && (
+          <DataManagement
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            flash={flash}
+            onImportRequest={setPendingImport}
+            onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
+          />
+        )}
       </main>
       {detailItem && <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
       {pendingDelete && (
@@ -189,7 +235,15 @@ function App() {
           onConfirm={() => {
             if (pendingDelete.kind === "daily") deleteDaily(pendingDelete.id);
             if (pendingDelete.kind === "sudden") deleteSudden(pendingDelete.id);
+            if (pendingDelete.kind === "all") deleteAllData();
           }}
+          isAllData={pendingDelete.kind === "all"}
+        />
+      )}
+      {pendingImport && (
+        <ConfirmImportModal
+          onCancel={() => setPendingImport(null)}
+          onConfirm={() => importBackup(pendingImport)}
         />
       )}
       <nav className="bottom-nav" aria-label="主要ナビゲーション">
@@ -217,7 +271,7 @@ function App() {
   );
 }
 
-function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; flash: string; onDaily: () => void; onSudden: () => void }) {
+function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden, onData }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; flash: string; onDaily: () => void; onSudden: () => void; onData: () => void }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const weekRecords = dailyRecords.filter((record) => daysAgo(record.date) <= 6);
   const weekLogs = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) <= 6);
@@ -231,6 +285,9 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden }: { dailyRec
 
       <div className="notice">
         このアプリは診断・治療・服薬指示を行いません。医療機関や専門家への相談の代わりにはなれません。
+      </div>
+      <div className="notice compact-notice">
+        スマホでは、ブラウザの共有ボタンから「ホーム画面に追加」を選ぶと、アプリのように起動できます。
       </div>
       {flash && <div className="success-message">{flash}</div>}
 
@@ -249,6 +306,7 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden }: { dailyRec
       <div className="action-stack">
         <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
         <button className="primary-btn" onClick={onDaily}>今日の記録をする</button>
+        <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
       </div>
 
       <section className="section-block">
@@ -259,6 +317,131 @@ function Home({ dailyRecords, suddenLogs, flash, onDaily, onSudden }: { dailyRec
           <Metric label="平均不安" value={formatAverage(weekRecords.map((record) => record.anxiety))} />
           <Metric label="突発ログ" value={`${weekLogs.length}件`} />
         </div>
+      </section>
+    </section>
+  );
+}
+
+function DataManagement({
+  dailyRecords,
+  suddenLogs,
+  flash,
+  onImportRequest,
+  onDeleteAllRequest,
+}: {
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  flash: string;
+  onImportRequest: (backup: BackupData) => void;
+  onDeleteAllRequest: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const backup: BackupData = {
+    app: {
+      name: "Self Compass",
+      version: appVersion,
+      exportedAt: nowIso(),
+    },
+    dailyRecords,
+    suddenLogs,
+  };
+
+  const handleImport = async (file: File | undefined) => {
+    setMessage("");
+    setError("");
+    if (!file) return;
+    if (!file.name.endsWith(".json")) {
+      setError("JSONファイルを選んでください。");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as Partial<BackupData> | Partial<DailyRecord>[] | { daily?: Partial<DailyRecord>[]; sudden?: Partial<SuddenLog>[] };
+      const normalized = normalizeBackupData(parsed);
+      onImportRequest(normalized);
+    } catch {
+      setError("バックアップファイルを読み込めませんでした。形式を確認してください。");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const exportDailyCsv = () => {
+    if (!dailyRecords.length) {
+      setError("出力できる日々の記録がありません。");
+      setMessage("");
+      return;
+    }
+    downloadTextFile(`daily-records-${today()}.csv`, toDailyCsv(dailyRecords), "text/csv;charset=utf-8");
+    setError("");
+    setMessage("日々の記録CSVを作成しました。");
+  };
+
+  const exportSuddenCsv = () => {
+    if (!suddenLogs.length) {
+      setError("出力できる突発ログがありません。");
+      setMessage("");
+      return;
+    }
+    downloadTextFile(`sudden-logs-${today()}.csv`, toSuddenCsv(suddenLogs), "text/csv;charset=utf-8");
+    setError("");
+    setMessage("突発ログCSVを作成しました。");
+  };
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">保存と出力</p>
+          <h1>データ管理</h1>
+        </div>
+      </header>
+      {flash && <div className="success-message">{flash}</div>}
+      {message && <div className="success-message">{message}</div>}
+      {error && <div className="error-message">{error}</div>}
+
+      <section className="section-block">
+        <h2>保存について</h2>
+        <p className="soft-text">このアプリの記録は、現在お使いのブラウザ内に保存されます。ブラウザのデータを消したり、端末を変更した場合、記録が失われることがあります。大切な記録は定期的にバックアップしてください。</p>
+        <p className="soft-text">このアプリは診断や治療を行うものではありません。記録は医師や専門家に相談するための参考情報として利用してください。</p>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>JSONバックアップ</h2>
+        <p className="soft-text">日々の記録と突発ログをまとめて、端末内でファイル化します。外部へ送信されることはありません。</p>
+        <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>JSONインポート</h2>
+        <p className="soft-text">保存したバックアップファイルから記録を読み込みます。読み込み前に確認画面を表示します。</p>
+        <input
+          ref={fileInputRef}
+          className="file-input"
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => handleImport(event.target.files?.[0])}
+        />
+        <button className="secondary-btn no-margin" onClick={() => fileInputRef.current?.click()}>JSONファイルを選ぶ</button>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>CSV出力</h2>
+        <p className="soft-text">共有や振り返りに使いやすい表形式で出力します。</p>
+        <div className="data-actions">
+          <button className="secondary-btn no-margin" onClick={exportDailyCsv}>日々の記録CSV</button>
+          <button className="secondary-btn no-margin" onClick={exportSuddenCsv}>突発ログCSV</button>
+        </div>
+      </section>
+
+      <section className="section-block data-card danger-zone">
+        <h2>全データ削除</h2>
+        <p className="soft-text">保存されている日々の記録と突発ログをすべて削除します。先にバックアップを取ることをおすすめします。</p>
+        <button className="delete-action full-width" onClick={onDeleteAllRequest}>すべての記録を削除</button>
       </section>
     </section>
   );
@@ -714,15 +897,30 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
   );
 }
 
-function ConfirmDeleteModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+function ConfirmDeleteModal({ onCancel, onConfirm, isAllData = false }: { onCancel: () => void; onConfirm: () => void; isAllData?: boolean }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="confirm-modal">
-        <h2>削除しますか？</h2>
-        <p>この記録を削除しますか？この操作は元に戻せません。</p>
+        <h2>{isAllData ? "すべて削除しますか？" : "削除しますか？"}</h2>
+        <p>{isAllData ? "保存されている記録をすべて削除します。この操作は元に戻せません。先にバックアップを取ることをおすすめします。" : "この記録を削除しますか？この操作は元に戻せません。"}</p>
         <div className="confirm-actions">
           <button className="secondary-action" onClick={onCancel}>キャンセル</button>
-          <button className="delete-action" onClick={onConfirm}>削除する</button>
+          <button className="delete-action" onClick={onConfirm}>{isAllData ? "すべて削除" : "削除する"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmImportModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="confirm-modal">
+        <h2>読み込みますか？</h2>
+        <p>現在の記録にバックアップデータを読み込みます。既存の記録は上書きされる可能性があります。続行しますか？</p>
+        <div className="confirm-actions">
+          <button className="secondary-action" onClick={onCancel}>キャンセル</button>
+          <button className="primary-btn" onClick={onConfirm}>読み込む</button>
         </div>
       </div>
     </div>
@@ -918,6 +1116,96 @@ function firstKey(items: [string, number][]) {
   return items[0]?.[0] || "記録なし";
 }
 
+function downloadBackup(backup: BackupData) {
+  downloadTextFile(`mental-health-record-backup-${today()}.json`, JSON.stringify(backup, null, 2), "application/json;charset=utf-8");
+}
+
+function downloadTextFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeBackupData(data: unknown): BackupData {
+  if (Array.isArray(data)) {
+    return {
+      app: { name: "Self Compass", version: appVersion, exportedAt: nowIso() },
+      dailyRecords: data.map((record) => normalizeDailyRecord(record as Partial<DailyRecord>)),
+      suddenLogs: [],
+    };
+  }
+
+  if (!data || typeof data !== "object") throw new Error("Invalid backup");
+  const source = data as {
+    dailyRecords?: Partial<DailyRecord>[];
+    suddenLogs?: Partial<SuddenLog>[];
+    daily?: Partial<DailyRecord>[];
+    sudden?: Partial<SuddenLog>[];
+  };
+  const daily = source.dailyRecords || source.daily;
+  const sudden = source.suddenLogs || source.sudden;
+  if (!Array.isArray(daily) || !Array.isArray(sudden)) throw new Error("Invalid backup");
+
+  return {
+    app: { name: "Self Compass", version: appVersion, exportedAt: nowIso() },
+    dailyRecords: daily.map(normalizeDailyRecord),
+    suddenLogs: sudden.map(normalizeSuddenLog),
+  };
+}
+
+function toDailyCsv(records: DailyRecord[]) {
+  const rows = [
+    ["記録日", "気分", "不安度", "イライラ度", "疲労度", "睡眠時間", "睡眠の質", "天気", "食事", "運動", "外出", "人との接触", "薬・サプリ", "今日の主な出来事", "今日のメモ"],
+    ...records.map((record) => [
+      record.date,
+      record.mood,
+      record.anxiety,
+      record.irritability,
+      record.fatigue,
+      record.sleepHours,
+      record.sleepQuality,
+      record.weather,
+      record.meal,
+      record.exercise,
+      record.wentOut,
+      record.socialContact,
+      record.medicine,
+      record.events,
+      record.memo,
+    ]),
+  ];
+  return `\uFEFF${rows.map(csvRow).join("\n")}`;
+}
+
+function toSuddenCsv(logs: SuddenLog[]) {
+  const rows = [
+    ["発生日時", "状態タグ", "強さ", "直前にあったこと", "場所", "身体のサイン", "頭に浮かんだ言葉・思考", "実際に取った行動", "対処後の変化", "メモ"],
+    ...logs.map((log) => [
+      formatDateTime(log.occurredAt),
+      joinTags(log.stateTags),
+      log.intensity,
+      log.triggers.join("、"),
+      log.place,
+      log.symptoms.join("、"),
+      log.thoughts,
+      log.actions.join("、"),
+      log.afterChange,
+      log.memo,
+    ]),
+  ];
+  return `\uFEFF${rows.map(csvRow).join("\n")}`;
+}
+
+function csvRow(values: Array<string | number>) {
+  return values.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",");
+}
+
 function normalizeDailyRecord(record: Partial<DailyRecord>): DailyRecord {
   const timestamp = record.createdAt || nowIso();
   return {
@@ -1012,3 +1300,11 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>,
 );
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`).catch((error) => {
+      console.error("Service worker registration failed", error);
+    });
+  });
+}

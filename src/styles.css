@@ -100,12 +100,27 @@ h3 {
   line-height: 1.65;
 }
 
+.compact-notice {
+  margin-top: 12px;
+}
+
 .success-message {
   margin-top: 12px;
   padding: 12px 13px;
   background: #e7f2eb;
   color: #275645;
   font-weight: 800;
+}
+
+.error-message {
+  margin-top: 12px;
+  padding: 12px 13px;
+  border: 1px solid #d99c8b;
+  border-radius: 8px;
+  background: #fff4f0;
+  color: #7a382d;
+  font-weight: 800;
+  line-height: 1.6;
 }
 
 .danger-notice {
@@ -188,6 +203,10 @@ h3 {
   margin-top: 10px;
   background: #e1ebe7;
   color: #20312d;
+}
+
+.no-margin {
+  margin-top: 0;
 }
 
 .ghost-btn {
@@ -625,6 +644,33 @@ textarea {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 14px;
+}
+
+.data-card {
+  display: grid;
+  gap: 12px;
+}
+
+.data-card h2,
+.data-card p {
+  margin-bottom: 0;
+}
+
+.data-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.file-input {
+  display: none;
+}
+
+.danger-zone {
+  border-color: #e6b8ac;
+}
+
+.full-width {
+  width: 100%;
 }
 
 .modal-head {

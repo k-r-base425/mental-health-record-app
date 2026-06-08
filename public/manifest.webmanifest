@@ -1,0 +1,26 @@
+{
+  "name": "Self Compass",
+  "short_name": "Self Compass",
+  "description": "日々の状態・突発ログ・傾向・レポートを記録するセルフケア用アプリ",
+  "start_url": "/mental-health-record-app/",
+  "scope": "/mental-health-record-app/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#2f6658",
+  "background_color": "#f7f8f5",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "/mental-health-record-app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/mental-health-record-app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
