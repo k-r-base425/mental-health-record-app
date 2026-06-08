@@ -1,7 +1,8 @@
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc && vite build",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
