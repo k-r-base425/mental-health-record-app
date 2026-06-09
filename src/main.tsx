@@ -916,6 +916,11 @@ function App() {
   return (
     <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
       <main className="screen">
+        {backTargetForScreen(screen) && (
+          <button className="back-link" onClick={() => moveToScreen(backTargetForScreen(screen)!)} type="button">
+            ← 戻る
+          </button>
+        )}
         {screen === "home" && (
           <Home
             dailyRecords={dailyRecords}
@@ -939,6 +944,8 @@ function App() {
             onCalendar={openCalendar}
             onThought={openThought}
             onIfThen={openIfThen}
+            onSelfCare={() => moveToScreen("selfcare")}
+            onHabit={openHabit}
             onDismissReminder={dismissReminderToday}
           />
         )}
@@ -993,7 +1000,7 @@ function App() {
             onIfThen={openIfThen}
           />
         )}
-        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} />}
+        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} onIfThen={openIfThen} />}
         {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} onOpenConsultation={openConsultation} />}
         {screen === "calendar" && (
           <CalendarScreen
@@ -1071,6 +1078,7 @@ function App() {
             onDeletePlan={(id) => setPendingDelete({ kind: "ifthen", id })}
             onTogglePlan={toggleIfThenPlan}
             onRunPlan={setLoggingIfThen}
+            onCreateSelfCare={(plan) => saveSelfCarePlan(createSelfCareFromIfThen(plan))}
             onDirtyChange={setActiveFormDirty}
           />
         )}
@@ -1440,6 +1448,8 @@ function Home({
   onCalendar,
   onThought,
   onIfThen,
+  onSelfCare,
+  onHabit,
   onDismissReminder,
 }: {
   dailyRecords: DailyRecord[];
@@ -1463,6 +1473,8 @@ function Home({
   onCalendar: () => void;
   onThought: () => void;
   onIfThen: () => void;
+  onSelfCare: () => void;
+  onHabit: () => void;
   onDismissReminder: () => void;
 }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
@@ -1519,19 +1531,20 @@ function Home({
         </section>
       )}
 
-      <section className="status-panel">
+      <section className="status-panel home-card home-card-record">
         <div>
           <p className="label">今日の記録</p>
-          <h2>{todayRecord ? "記録済み" : "まだ未記録"}</h2>
+          <h2>{todayRecord ? "記録済み" : "今日の状態を短く残せます"}</h2>
         </div>
         <div className="quick-grid">
           <Metric label="気分" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatScore(todayRecord.mood) : "-"} />
           <Metric label="不安" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatScore(todayRecord.anxiety) : "-"} />
           <Metric label="睡眠" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatSleepHours(todayRecord.sleepHours) : "-"} />
         </div>
+        <button className="primary-btn" onClick={onDaily}>{todayRecord ? "今日の記録を確認" : "今日の記録へ"}</button>
       </section>
 
-      <section className="section-block">
+      <section className="section-block home-card home-card-habit">
         <h2>記録のペース</h2>
         <p className="soft-text">記録の間隔が空いても、また再開できます。</p>
         <div className="summary-list">
@@ -1540,15 +1553,16 @@ function Home({
           <Metric label="最後の記録" value={privateDisplayMode ? "記録あり" : habitSummary.lastDate || "なし"} />
           <Metric label="今週" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.weekCount}回`} />
         </div>
+        <button className="secondary-btn" onClick={onHabit}>習慣サポートを見る</button>
       </section>
 
-      <div className="action-stack">
-        <button className="secondary-btn no-margin" onClick={onLock}>ロック</button>
+      <section className="section-block home-card home-card-sudden">
+        <h2>突発ログ</h2>
+        <p className="soft-text">状態の波があったときに短く記録できます。</p>
         <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
-        <button className="primary-btn" onClick={onDaily}>今日の記録をする</button>
-      </div>
+      </section>
 
-      <section className="section-block">
+      <section className="section-block home-card home-card-insight">
         <h2>今日の気づき</h2>
         {todayInsight ? (
           <article className="mini-insight">
@@ -1563,7 +1577,7 @@ function Home({
         <button className="secondary-btn" onClick={onIfThen}>If-Thenプランを見る</button>
       </section>
 
-      <section className="section-block">
+      <section className="section-block home-card home-card-thought">
         <h2>思考メモ</h2>
         <p className="soft-text">考えが頭の中で回るときは、思考メモに一度置いておけます。</p>
         <div className="summary-list">
@@ -1573,9 +1587,9 @@ function Home({
         <button className="secondary-btn" onClick={onThought}>思考メモを開く</button>
       </section>
 
-      <section className="section-block">
+      <section className="section-block home-card home-card-action">
         <h2>今日の小さな一手</h2>
-        {!todayRecord && (todayPlans.length > 0 || todayIfThenPlans.length > 0) && <p className="soft-text">記録が難しい日は、小さな一手だけでも大丈夫です。</p>}
+        <p className="soft-text">今の状態に合わせて試せる小さな行動です。合わなかった日があっても大丈夫です。</p>
         {todayPlans.length === 0 && todayIfThenPlans.length === 0 ? (
           <p className="soft-text">セルフケアやIf-Thenプランから、自分に合いそうな行動を追加できます。</p>
         ) : (
@@ -1603,7 +1617,27 @@ function Home({
         <button className="secondary-btn" onClick={onIfThen}>If-Thenプランを作る</button>
       </section>
 
-      <section className="section-block">
+      <section className="section-block home-card home-card-ifthen">
+        <h2>If-Thenプラン</h2>
+        <p className="soft-text">「もし〜が起きたら、〜する」を決めておけます。</p>
+        <div className="summary-list">
+          <Metric label="有効なプラン" value={privateDisplayMode ? "プランあり" : `${ifThenPlans.filter((plan) => plan.isActive).length}件`} />
+          <Metric label="実行ログ" value={privateDisplayMode ? "記録あり" : `${ifThenLogs.length}回`} />
+        </div>
+        <button className="secondary-btn" onClick={onIfThen}>If-Thenプランを見る</button>
+      </section>
+
+      <section className="section-block home-card home-card-care">
+        <h2>セルフケア</h2>
+        <p className="soft-text">自分に合いそうな行動をマイプランにできます。</p>
+        <div className="summary-list">
+          <Metric label="マイプラン" value={privateDisplayMode ? "プランあり" : `${selfCarePlans.length}件`} />
+          <Metric label="実行ログ" value={privateDisplayMode ? "記録あり" : `${selfCareLogs.length}回`} />
+        </div>
+        <button className="secondary-btn" onClick={onSelfCare}>セルフケアを見る</button>
+      </section>
+
+      <section className="section-block home-card home-card-consult">
         <h2>相談ノート</h2>
         <p className="soft-text">話したいことを少しずつメモしておけます。</p>
         <div className="summary-list">
@@ -1611,6 +1645,12 @@ function Home({
           <Metric label="直近更新" value={privateDisplayMode && latestNote ? "メモあり" : latestNote ? latestNote.title : "なし"} />
         </div>
         <button className="secondary-btn" onClick={onConsultation}>相談ノートを開く</button>
+      </section>
+
+      <section className="section-block home-card home-card-lock">
+        <h2>プライバシー・ロック</h2>
+        <p className="soft-text">記録内容を開いたままにしないための簡易ロックです。</p>
+        <button className="secondary-btn no-margin" onClick={onLock}>ロック</button>
       </section>
 
     </section>
@@ -1861,7 +1901,7 @@ function HabitSupportScreen({
 
       <section className="section-block data-card">
         <h2>If-Thenプラン</h2>
-        <p className="soft-text">習慣にしたいことは、「もし〜したら、〜する」の形にすると、始めるタイミングが分かりやすくなります。</p>
+        <p className="soft-text">習慣にしたいことは、「もし〜したら、〜する」の形にすると、始めるタイミングが分かりやすくなります。記録で合うかを見ながら、小さく続けやすい形にできます。</p>
         <button className="secondary-btn no-margin" onClick={onIfThen}>If-Thenプランを開く</button>
       </section>
 
@@ -2528,7 +2568,7 @@ function SelfCareScreen({
 
       <section className="section-block data-card">
         <h2>If-Thenプラン</h2>
-        <p className="soft-text">セルフケアを「もし〜が起きたら、〜する」の形にすると、実行するタイミングを決めやすくなります。</p>
+        <p className="soft-text">セルフケアを「もし〜が起きたら、〜する」の形にすると、きっかけと小さな行動を結びつけやすくなります。実行ログで合うかを見ながら調整できます。</p>
         <button className="secondary-btn no-margin" onClick={onIfThen}>If-Thenプランを見る</button>
       </section>
 
@@ -2673,6 +2713,7 @@ function IfThenScreen({
   onDeletePlan,
   onTogglePlan,
   onRunPlan,
+  onCreateSelfCare,
   onDirtyChange,
 }: {
   plans: IfThenPlan[];
@@ -2683,6 +2724,7 @@ function IfThenScreen({
   onDeletePlan: (id: string) => void;
   onTogglePlan: (id: string) => void;
   onRunPlan: (plan: IfThenPlan) => void;
+  onCreateSelfCare: (plan: IfThenPlan) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const [form, setForm] = useState<IfThenPlan>(createIfThenDraft());
@@ -2804,7 +2846,15 @@ function IfThenScreen({
 
       <section className="section-block data-card">
         <h2>使い方</h2>
-        <p className="soft-text">If-Thenプランは、「もし〇〇が起きたら、△△する」という形で、行動のきっかけと小さな行動を先に結びつけておく方法です。</p>
+        <p className="soft-text">If-Thenプランは、状態の波や思考のくせなどの「きっかけ」に対して、あらかじめ小さな行動を決めておく習慣化の方法です。</p>
+        <p className="soft-text">記録からきっかけに気づく → If-Thenで小さな行動を作る → 実行ログで合うかを見る → 合いそうなら続けやすい形にする、という流れで使えます。</p>
+        <div className="step-list">
+          <div><strong>1. きっかけを見つける</strong><span>例：曇りの日に不安感が高い、LINEの後に考えすぎる</span></div>
+          <div><strong>2. 小さな行動を決める</strong><span>例：もしLINEの後に考え続けたら、事実と想像を分けてメモする</span></div>
+          <div><strong>3. 実行して記録する</strong><span>「実行した」ボタンで、感じ方を短く残せます</span></div>
+          <div><strong>4. 合うかふり返る</strong><span>「少し整った」が多ければ、続ける候補にできます</span></div>
+          <div><strong>5. 続けやすい形にする</strong><span>合わないプランは、もっと小さくしたり別の行動に変えたりできます</span></div>
+        </div>
         <p className="soft-text">例：もし朝に不安感が強かったら、カーテンを開けて5分だけ光を浴びる。</p>
         <div className="notice compact-notice">この機能は診断や治療ではなく、自分に合う整え方を見つけるためのセルフケア補助です。</div>
       </section>
@@ -2861,6 +2911,7 @@ function IfThenScreen({
             {sortedPlans.map((plan) => {
               const planLogs = logs.filter((log) => log.planId === plan.id);
               const lastLog = planLogs[0];
+              const habitCandidate = planLogs.length >= 3 && planLogs.filter((log) => log.result === "少し整った").length >= 2;
               return (
                 <article className="record-card ifthen-card" key={plan.id}>
                   <div className="record-card-head">
@@ -2880,10 +2931,16 @@ function IfThenScreen({
                     <Metric label="最終実行" value={lastLog ? formatDateTime(lastLog.createdAt) : "なし"} />
                   </div>
                   {plan.memo && <p className="record-snippet">{privateDisplayMode ? "メモは非表示です" : plan.memo}</p>}
+                  {habitCandidate && (
+                    <div className="notice compact-notice">
+                      このプランは記録上、使いやすい可能性があります。マイプランとして続ける候補にできます。
+                    </div>
+                  )}
                   <div className="card-actions">
                     <button className="secondary-action" onClick={() => setDetail(plan)}>詳細</button>
                     <button className="secondary-action" onClick={() => startEdit(plan)}>編集</button>
                     <button className="secondary-action" onClick={() => onRunPlan(plan)} disabled={!plan.isActive}>実行した</button>
+                    {habitCandidate && <button className="secondary-action" onClick={() => onCreateSelfCare(plan)}>習慣化候補にする</button>}
                     <button className="secondary-action" onClick={() => onTogglePlan(plan.id)}>{plan.isActive ? "一時停止" : "再開"}</button>
                     <button className="delete-action" onClick={() => onDeletePlan(plan.id)}>削除</button>
                   </div>
@@ -2938,7 +2995,7 @@ function IfThenDetailModal({ plan, logs, privateDisplayMode, onClose }: { plan: 
             <p className="eyebrow">If-Thenプラン</p>
             <h2>詳細</h2>
           </div>
-          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+          <button className="ghost-btn" onClick={onClose}>← 戻る</button>
         </div>
         <div className="detail-list">
           {rows.map(([label, value]) => (
@@ -3242,7 +3299,7 @@ function ConsultationDetailModal({
             <p className="eyebrow">相談ノート</p>
             <h2>詳細</h2>
           </div>
-          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+          <button className="ghost-btn" onClick={onClose}>← 戻る</button>
         </div>
         <div className="detail-list">
           {rows.map(([label, value]) => (
@@ -3495,7 +3552,7 @@ function ThoughtDetailModal({ note, privateDisplayMode, onClose }: { note: Thoug
             <p className="eyebrow">思考メモ</p>
             <h2>詳細</h2>
           </div>
-          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+          <button className="ghost-btn" onClick={onClose}>← 戻る</button>
         </div>
         <div className="detail-list">
           {rows.map(([label, value]) => (
@@ -3902,7 +3959,7 @@ function SuddenForm({
   );
 }
 
-function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[]; ifThenPlans: IfThenPlan[]; ifThenLogs: IfThenLog[] }) {
+function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, onIfThen }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[]; ifThenPlans: IfThenPlan[]; ifThenLogs: IfThenLog[]; onIfThen: () => void }) {
   const sortedDaily = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date));
   const highDaily = sortedDaily.slice(-14);
   const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
@@ -3951,6 +4008,7 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
             {insights.map((insight) => <InsightCard insight={insight} key={insight.id} />)}
           </div>
         )}
+        <button className="secondary-btn" onClick={onIfThen}>このきっかけに対するIf-Thenプランを作る</button>
       </section>
 
       <section className="section-block">
@@ -4286,7 +4344,7 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
             <p className="eyebrow">{item.kind === "daily" ? "日々の記録" : "突発ログ"}</p>
             <h2>詳細</h2>
           </div>
-          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+          <button className="ghost-btn" onClick={onClose}>← 戻る</button>
         </div>
         <div className="detail-list">
           {rows.map(([label, value]) => (
@@ -4353,7 +4411,7 @@ function FormHead({ title, sub, onCancel }: { title: string; sub: string; onCanc
         <p className="eyebrow">{sub}</p>
         <h1>{title}</h1>
       </div>
-      <button className="ghost-btn" onClick={onCancel}>戻る</button>
+      <button className="ghost-btn" onClick={onCancel}>← 戻る</button>
     </header>
   );
 }
@@ -5081,6 +5139,15 @@ function navGroup(screen: Screen) {
   return screen;
 }
 
+function backTargetForScreen(screen: Screen): Screen | null {
+  if (screen === "daily" || screen === "sudden") return null;
+  if (screen === "records") return "recordHub";
+  if (screen === "analysis" || screen === "report" || screen === "calendar" || screen === "thought") return "review";
+  if (screen === "ifthen") return "selfcare";
+  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
+  return null;
+}
+
 function createConsultationDraft(): ConsultationNote {
   const timestamp = nowIso();
   return {
@@ -5130,6 +5197,19 @@ function createIfThenFromSelfCare(plan: SelfCarePlan): IfThenPlan {
     ease: "すぐできそう",
     memo: plan.memo,
     isActive: true,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function createSelfCareFromIfThen(plan: IfThenPlan): SelfCarePlan {
+  const timestamp = nowIso();
+  const category: SelfCareCategory = selfCareCategories.includes(plan.category as SelfCareCategory) ? (plan.category as SelfCareCategory) : "習慣を見直す";
+  return {
+    id: newId(),
+    title: plan.thenText || plan.title,
+    category,
+    memo: `If-Thenプランから追加: もし ${plan.ifText} / そのとき ${plan.thenText}`,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
