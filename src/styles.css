@@ -1126,6 +1126,43 @@ textarea {
   line-height: 1.5;
 }
 
+.ifthen-card {
+  border-color: color-mix(in srgb, var(--color-care) 28%, var(--color-border));
+}
+
+.ifthen-flow {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.ifthen-flow p,
+.candidate-card.ifthen-card p {
+  display: grid;
+  grid-template-columns: 4.5em 1fr;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.ifthen-flow span,
+.candidate-card.ifthen-card span {
+  align-self: start;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-align: center;
+  padding: 3px 6px;
+}
+
+.ifthen-mini strong {
+  line-height: 1.5;
+}
+
 .file-input {
   display: none;
 }

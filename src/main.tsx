@@ -48,6 +48,8 @@ type SuddenLog = {
 
 type SelfCareCategory = "体を整える" | "環境を整える" | "思考を整理する" | "人とつながる" | "休む" | "習慣を見直す";
 type SelfCareResult = "少し整った" | "変化は少なめ" | "今は合わなかった" | "後で振り返る";
+type IfThenCategory = SelfCareCategory | "記録する" | "その他";
+type IfThenEase = "すぐできそう" | "少し準備が必要" | "今は難しいかも";
 
 type SelfCarePlan = {
   id: string;
@@ -63,6 +65,32 @@ type SelfCareLog = {
   planId: string;
   title: string;
   category: SelfCareCategory;
+  result: SelfCareResult;
+  memo: string;
+  createdAt: string;
+};
+
+type IfThenPlan = {
+  id: string;
+  title: string;
+  ifText: string;
+  thenText: string;
+  category: IfThenCategory;
+  relatedStateTags: string[];
+  relatedThoughtTags: string[];
+  ease: IfThenEase;
+  memo: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type IfThenLog = {
+  id: string;
+  planId: string;
+  planTitle: string;
+  ifText: string;
+  thenText: string;
   result: SelfCareResult;
   memo: string;
   createdAt: string;
@@ -155,13 +183,13 @@ type Insight = {
   relatedCount: number;
   action: string;
   note: string;
-  group: "daily" | "sudden" | "selfcare" | "thought";
+  group: "daily" | "sudden" | "selfcare" | "thought" | "ifthen";
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
-type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "thought"; id: string } | { kind: "all" };
+type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "thought"; id: string } | { kind: "ifthen"; id: string } | { kind: "all" };
 type BackupData = {
   app: {
     name: string;
@@ -172,6 +200,8 @@ type BackupData = {
   suddenLogs: SuddenLog[];
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
   consultationNotes: ConsultationNote[];
   thoughtNotes: ThoughtNote[];
   privacySettings: BackupPrivacySettings;
@@ -190,6 +220,8 @@ const dailyStorageKey = "self-compass-daily-records";
 const suddenStorageKey = "self-compass-sudden-logs";
 const selfCarePlansStorageKey = "selfCarePlans";
 const selfCareLogsStorageKey = "selfCareLogs";
+const ifThenPlansStorageKey = "ifThenPlans";
+const ifThenLogsStorageKey = "ifThenLogs";
 const consultationNotesStorageKey = "consultationNotes";
 const thoughtNotesStorageKey = "thoughtNotes";
 const privacySettingsStorageKey = "privacySettings";
@@ -199,6 +231,7 @@ const dailyDraftKey = "dailyRecordDraft";
 const suddenDraftKey = "suddenLogDraft";
 const consultationDraftKey = "consultationNoteDraft";
 const thoughtDraftKey = "thoughtNoteDraft";
+const ifThenDraftKey = "ifThenPlanDraft";
 const selfCareDraftKey = "selfCareDraft";
 const habitSettingsStorageKey = "habitSettings";
 const reminderDismissalsStorageKey = "reminderDismissals";
@@ -219,6 +252,8 @@ const supportWords = ["死にたい", "消えたい", "自傷", "薬を大量に
 const consultationTargets: ConsultationTarget[] = ["doctor", "counselor", "family", "partner", "friend", "ai", "other"];
 const consultationStatuses: ConsultationStatus[] = ["draft", "planned", "done", "pending"];
 const selfCareCategories: SelfCareCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "習慣を見直す"];
+const ifThenCategories: IfThenCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "記録する", "その他"];
+const ifThenEaseOptions: IfThenEase[] = ["すぐできそう", "少し準備が必要", "今は難しいかも"];
 const reminderTimeTypes: ReminderTimeType[] = ["朝", "昼", "夕方", "夜", "自由入力"];
 const weeklyGoalTypes: WeeklyGoalType[] = ["週に1回", "週に3回", "できる日に記録する", "カスタム"];
 const displayThemes: DisplayTheme[] = ["standard", "soft", "clear"];
@@ -257,12 +292,31 @@ const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo"
   { title: "何もしない時間を作る", category: "休む", memo: "短い余白を作る" },
 ];
 
+const ifThenTemplates: Array<Pick<IfThenPlan, "title" | "ifText" | "thenText" | "category" | "relatedStateTags" | "relatedThoughtTags" | "ease" | "memo">> = [
+  { title: "朝の水", ifText: "朝起きて体が重かったら", thenText: "コップ1杯の水を飲む", category: "体を整える", relatedStateTags: ["身体の重さ"], relatedThoughtTags: [], ease: "すぐできそう", memo: "小さく始めるための候補です" },
+  { title: "3分だけ歩く", ifText: "日中にそわそわしたら", thenText: "外に出て3分だけ歩く", category: "体を整える", relatedStateTags: ["そわそわ"], relatedThoughtTags: [], ease: "少し準備が必要", memo: "短い時間で試せます" },
+  { title: "寝る前に少し離す", ifText: "寝る前に考えが止まらなかったら", thenText: "照明を落としてスマホを少し離す", category: "休む", relatedStateTags: ["考えすぎ"], relatedThoughtTags: ["先のことを考えすぎる"], ease: "少し準備が必要", memo: "眠る前の刺激を少し減らす候補です" },
+  { title: "ひとつ片づける", ifText: "部屋が散らかって気になるなら", thenText: "目の前のものを1つだけ片づける", category: "環境を整える", relatedStateTags: [], relatedThoughtTags: [], ease: "すぐできそう", memo: "全部ではなく、ひとつだけにします" },
+  { title: "机を1分整える", ifText: "作業に集中しにくいなら", thenText: "机の上を1分だけ整える", category: "環境を整える", relatedStateTags: ["焦り"], relatedThoughtTags: [], ease: "すぐできそう", memo: "始める前の小さな準備です" },
+  { title: "事実と想像を分ける", ifText: "自分を責める考えが出たら", thenText: "事実と想像を1つずつ分けて書く", category: "思考を整理する", relatedStateTags: ["自分を責める感覚"], relatedThoughtTags: ["自分を責める"], ease: "すぐできそう", memo: "責めるためではなく、距離を取るための候補です" },
+  { title: "別の可能性を1つ", ifText: "悪い方に決めつけそうになったら", thenText: "別の可能性を1つだけ書く", category: "思考を整理する", relatedStateTags: [], relatedThoughtTags: ["悪い方に決めつける"], ease: "すぐできそう", memo: "無理に前向きにしなくても大丈夫です" },
+  { title: "すべきメモ", ifText: "「〜すべき」が強くなったら", thenText: "「本当に今やる必要があるか」を一度メモする", category: "思考を整理する", relatedStateTags: [], relatedThoughtTags: ["すべきが強くなる"], ease: "すぐできそう", memo: "急いで決めすぎないためのメモです" },
+  { title: "確認と想像を分ける", ifText: "相手の気持ちを読みすぎていると感じたら", thenText: "確認できていることと想像を分ける", category: "思考を整理する", relatedStateTags: [], relatedThoughtTags: ["相手の気持ちを読みすぎる"], ease: "すぐできそう", memo: "分かっていることを少し整理します" },
+  { title: "短く連絡する", ifText: "一人で抱え込みそうなら", thenText: "信頼できる人に短く連絡する", category: "人とつながる", relatedStateTags: ["ひとり感"], relatedThoughtTags: [], ease: "少し準備が必要", memo: "一文だけでも大丈夫です" },
+  { title: "一文だけ送る", ifText: "話すのが難しいなら", thenText: "「今少しだけ聞いてほしい」と一文だけ送る", category: "人とつながる", relatedStateTags: ["ひとり感"], relatedThoughtTags: [], ease: "少し準備が必要", memo: "言葉を短くしておきます" },
+  { title: "5分横になる", ifText: "何も進まないと感じたら", thenText: "5分だけ横になる", category: "休む", relatedStateTags: ["動きにくさ"], relatedThoughtTags: [], ease: "すぐできそう", memo: "休む選択肢を先に置いておきます" },
+  { title: "今日は結論を出さない", ifText: "疲れが強いと感じたら", thenText: "今日は結論を出さないと決める", category: "休む", relatedStateTags: ["身体の重さ"], relatedThoughtTags: ["早く答えを出そうとする"], ease: "すぐできそう", memo: "先送りではなく、休むための区切りです" },
+  { title: "突発ログに短く残す", ifText: "状態の波が大きかったら", thenText: "突発ログを短く残す", category: "記録する", relatedStateTags: ["不安感", "そわそわ"], relatedThoughtTags: [], ease: "すぐできそう", memo: "全部書かなくても大丈夫です" },
+  { title: "思考メモに置く", ifText: "同じ考えが何度も出たら", thenText: "思考メモに一度置いておく", category: "記録する", relatedStateTags: ["考えすぎ"], relatedThoughtTags: ["先のことを考えすぎる"], ease: "すぐできそう", memo: "頭の外に置くための候補です" },
+];
+
 const draftDefinitions = [
   { key: dailyDraftKey, label: "今日の記録" },
   { key: suddenDraftKey, label: "突発ログ" },
   { key: consultationDraftKey, label: "相談ノート" },
   { key: selfCareDraftKey, label: "カスタムセルフケア" },
   { key: thoughtDraftKey, label: "思考メモ" },
+  { key: ifThenDraftKey, label: "If-Thenプラン" },
 ];
 
 const onboardingSteps = [
@@ -347,6 +401,18 @@ function loadSelfCareLogs() {
   return logs;
 }
 
+function loadIfThenPlans() {
+  const plans = readStorage<Partial<IfThenPlan>>(ifThenPlansStorageKey).map(normalizeIfThenPlan);
+  localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(plans));
+  return plans;
+}
+
+function loadIfThenLogs() {
+  const logs = readStorage<Partial<IfThenLog>>(ifThenLogsStorageKey).map(normalizeIfThenLog);
+  localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(logs));
+  return logs;
+}
+
 function loadConsultationNotes() {
   const notes = readStorage<Partial<ConsultationNote>>(consultationNotesStorageKey).map(normalizeConsultationNote);
   localStorage.setItem(consultationNotesStorageKey, JSON.stringify(notes));
@@ -410,6 +476,8 @@ function App() {
   const [suddenLogs, setSuddenLogs] = useState<SuddenLog[]>(loadSuddenLogs);
   const [selfCarePlans, setSelfCarePlans] = useState<SelfCarePlan[]>(loadSelfCarePlans);
   const [selfCareLogs, setSelfCareLogs] = useState<SelfCareLog[]>(loadSelfCareLogs);
+  const [ifThenPlans, setIfThenPlans] = useState<IfThenPlan[]>(loadIfThenPlans);
+  const [ifThenLogs, setIfThenLogs] = useState<IfThenLog[]>(loadIfThenLogs);
   const [consultationNotes, setConsultationNotes] = useState<ConsultationNote[]>(loadConsultationNotes);
   const [thoughtNotes, setThoughtNotes] = useState<ThoughtNote[]>(loadThoughtNotes);
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(loadPrivacySettings);
@@ -427,6 +495,7 @@ function App() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
   const [loggingPlan, setLoggingPlan] = useState<SelfCarePlan | null>(null);
+  const [loggingIfThen, setLoggingIfThen] = useState<IfThenPlan | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(onboardingCompletedStorageKey) !== "true");
   const [onboardingMode, setOnboardingMode] = useState<"initial" | "guide">("initial");
   const [activeFormDirty, setActiveFormDirty] = useState(false);
@@ -520,7 +589,8 @@ function App() {
     localStorage.removeItem(suddenDraftKey);
     setActiveFormDirty(false);
     setEditingSudden(null);
-    setFlash(isEditing ? "突発ログを更新しました" : "突発ログを保存しました");
+    const related = findIfThenByStateTags(ifThenPlans, log.stateTags);
+    setFlash(isEditing ? "突発ログを更新しました" : related.length ? "突発ログを保存しました。似た状態のときに使えそうな小さな行動があります。" : "突発ログを保存しました。If-Thenプランで小さな行動を作ることもできます。");
     setScreen(isEditing ? "records" : "home");
   };
 
@@ -548,6 +618,39 @@ function App() {
     setFlash("セルフケアの記録を保存しました");
   };
 
+  const saveIfThenPlan = (plan: IfThenPlan) => {
+    const isEditing = ifThenPlans.some((item) => item.id === plan.id);
+    const next = isEditing ? ifThenPlans.map((item) => (item.id === plan.id ? plan : item)) : [plan, ...ifThenPlans];
+    setIfThenPlans(next);
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(next));
+    localStorage.removeItem(ifThenDraftKey);
+    setActiveFormDirty(false);
+    setFlash(isEditing ? "If-Thenプランを更新しました" : "If-Thenプランを追加しました");
+  };
+
+  const deleteIfThenPlan = (id: string) => {
+    const next = ifThenPlans.filter((plan) => plan.id !== id);
+    setIfThenPlans(next);
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(next));
+    setPendingDelete(null);
+    setFlash("If-Thenプランを削除しました");
+  };
+
+  const toggleIfThenPlan = (id: string) => {
+    const next = ifThenPlans.map((plan) => plan.id === id ? { ...plan, isActive: !plan.isActive, updatedAt: nowIso() } : plan);
+    setIfThenPlans(next);
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(next));
+    setFlash("If-Thenプランを更新しました");
+  };
+
+  const saveIfThenLog = (log: IfThenLog) => {
+    const next = [log, ...ifThenLogs];
+    setIfThenLogs(next);
+    localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(next));
+    setLoggingIfThen(null);
+    setFlash("If-Thenプランの実行を記録しました");
+  };
+
   const saveConsultationNote = (note: ConsultationNote) => {
     const isEditing = consultationNotes.some((item) => item.id === note.id);
     const next = isEditing ? consultationNotes.map((item) => (item.id === note.id ? note : item)) : [note, ...consultationNotes];
@@ -567,7 +670,8 @@ function App() {
     setActiveFormDirty(false);
     setEditingThought(null);
     setPrefillThought(null);
-    setFlash(isEditing ? "思考メモを更新しました" : "思考メモを保存しました");
+    const related = findIfThenByThoughtTags(ifThenPlans, note.thoughtTags);
+    setFlash(isEditing ? "思考メモを更新しました" : related.length ? "思考メモを保存しました。この考え方が出たとき用の小さな行動があります。" : "思考メモを保存しました。If-Thenプランで小さな行動を作ることもできます。");
   };
 
   const updateConsultationStatus = (id: string, status: ConsultationStatus) => {
@@ -616,6 +720,8 @@ function App() {
     setSuddenLogs(backup.suddenLogs);
     setSelfCarePlans(backup.selfCarePlans);
     setSelfCareLogs(backup.selfCareLogs);
+    setIfThenPlans(backup.ifThenPlans);
+    setIfThenLogs(backup.ifThenLogs);
     setConsultationNotes(backup.consultationNotes);
     setThoughtNotes(backup.thoughtNotes);
     setHabitSettings(normalizeHabitSettings(backup.habitSettings));
@@ -627,6 +733,8 @@ function App() {
     localStorage.setItem(suddenStorageKey, JSON.stringify(backup.suddenLogs));
     localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(backup.selfCarePlans));
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(backup.selfCareLogs));
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(backup.ifThenPlans));
+    localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(backup.ifThenLogs));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(backup.consultationNotes));
     localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(backup.thoughtNotes));
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
@@ -644,6 +752,8 @@ function App() {
     setSuddenLogs([]);
     setSelfCarePlans([]);
     setSelfCareLogs([]);
+    setIfThenPlans([]);
+    setIfThenLogs([]);
     setConsultationNotes([]);
     setThoughtNotes([]);
     const nextPrivacy = { ...privacySettings, privateDisplayMode: false, updatedAt: nowIso() };
@@ -652,6 +762,8 @@ function App() {
     localStorage.setItem(suddenStorageKey, JSON.stringify([]));
     localStorage.setItem(selfCarePlansStorageKey, JSON.stringify([]));
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify([]));
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify([]));
+    localStorage.setItem(ifThenLogsStorageKey, JSON.stringify([]));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify([]));
     localStorage.setItem(thoughtNotesStorageKey, JSON.stringify([]));
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
@@ -733,6 +845,11 @@ function App() {
     setScreen("thought");
   };
 
+  const openIfThen = () => {
+    setFlash("");
+    setScreen("ifthen");
+  };
+
   const openThoughtFromSudden = (log: SuddenLog) => {
     setFlash("");
     setEditingThought(null);
@@ -805,6 +922,8 @@ function App() {
             suddenLogs={suddenLogs}
             selfCarePlans={selfCarePlans}
             selfCareLogs={selfCareLogs}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
             consultationNotes={consultationNotes}
             thoughtNotes={thoughtNotes}
             privateDisplayMode={privacySettings.privateDisplayMode}
@@ -812,12 +931,14 @@ function App() {
             reminderDismissals={reminderDismissals}
             flash={flash}
             onCareDone={setLoggingPlan}
+            onIfThenDone={setLoggingIfThen}
             onConsultation={openConsultation}
             onLock={lockApp}
             onDaily={openDaily}
             onSudden={openSudden}
             onCalendar={openCalendar}
             onThought={openThought}
+            onIfThen={openIfThen}
             onDismissReminder={dismissReminderToday}
           />
         )}
@@ -862,15 +983,18 @@ function App() {
             suddenLogs={suddenLogs}
             selfCareLogs={selfCareLogs}
             thoughtNotes={thoughtNotes}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
             onAnalysis={openAnalysis}
             onReport={openReport}
             onConsultation={openConsultation}
             onCalendar={openCalendar}
             onThought={openThought}
+            onIfThen={openIfThen}
           />
         )}
-        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} thoughtNotes={thoughtNotes} />}
-        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} thoughtNotes={thoughtNotes} onOpenConsultation={openConsultation} />}
+        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} />}
+        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} onOpenConsultation={openConsultation} />}
         {screen === "calendar" && (
           <CalendarScreen
             dailyRecords={dailyRecords}
@@ -891,6 +1015,11 @@ function App() {
             onSavePlan={saveSelfCarePlan}
             onDeletePlan={(id) => setPendingDelete({ kind: "selfcare", id })}
             onCareDone={setLoggingPlan}
+            onIfThen={openIfThen}
+            onCreateIfThen={(plan) => {
+              saveIfThenPlan(createIfThenFromSelfCare(plan));
+              setScreen("ifthen");
+            }}
             onDirtyChange={setActiveFormDirty}
           />
         )}
@@ -899,6 +1028,8 @@ function App() {
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
             selfCareLogs={selfCareLogs}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
             thoughtNotes={thoughtNotes}
             notes={consultationNotes}
             flash={flash}
@@ -924,6 +1055,22 @@ function App() {
               setPrefillThought(null);
             }}
             onDelete={(id) => setPendingDelete({ kind: "thought", id })}
+            ifThenPlans={ifThenPlans}
+            onIfThenDone={setLoggingIfThen}
+            onCreateIfThen={openIfThen}
+            onDirtyChange={setActiveFormDirty}
+          />
+        )}
+        {screen === "ifthen" && (
+          <IfThenScreen
+            plans={ifThenPlans}
+            logs={ifThenLogs}
+            flash={flash}
+            privateDisplayMode={privacySettings.privateDisplayMode}
+            onSavePlan={saveIfThenPlan}
+            onDeletePlan={(id) => setPendingDelete({ kind: "ifthen", id })}
+            onTogglePlan={toggleIfThenPlan}
+            onRunPlan={setLoggingIfThen}
             onDirtyChange={setActiveFormDirty}
           />
         )}
@@ -944,6 +1091,7 @@ function App() {
             onAbout={openAbout}
             onHabit={openHabit}
             onDisplay={openDisplay}
+            onIfThen={openIfThen}
           />
         )}
         {screen === "about" && <AboutScreen />}
@@ -955,6 +1103,7 @@ function App() {
             flash={flash}
             onSave={updateHabitSettings}
             onDaily={openDaily}
+            onIfThen={openIfThen}
           />
         )}
         {screen === "display" && (
@@ -970,6 +1119,8 @@ function App() {
             suddenLogs={suddenLogs}
             selfCarePlans={selfCarePlans}
             selfCareLogs={selfCareLogs}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
             consultationNotes={consultationNotes}
             thoughtNotes={thoughtNotes}
             privacySettings={privacySettings}
@@ -992,12 +1143,14 @@ function App() {
             if (pendingDelete.kind === "selfcare") deleteSelfCarePlan(pendingDelete.id);
             if (pendingDelete.kind === "consultation") deleteConsultationNote(pendingDelete.id);
             if (pendingDelete.kind === "thought") deleteThoughtNote(pendingDelete.id);
+            if (pendingDelete.kind === "ifthen") deleteIfThenPlan(pendingDelete.id);
             if (pendingDelete.kind === "all") deleteAllData();
           }}
           isAllData={pendingDelete.kind === "all"}
         />
       )}
       {loggingPlan && <SelfCareLogModal plan={loggingPlan} onCancel={() => setLoggingPlan(null)} onSave={saveSelfCareLog} />}
+      {loggingIfThen && <IfThenLogModal plan={loggingIfThen} onCancel={() => setLoggingIfThen(null)} onSave={saveIfThenLog} />}
       {pendingImport && (
         <ConfirmImportModal
           onCancel={() => setPendingImport(null)}
@@ -1270,6 +1423,8 @@ function Home({
   suddenLogs,
   selfCarePlans,
   selfCareLogs,
+  ifThenPlans,
+  ifThenLogs,
   consultationNotes,
   thoughtNotes,
   privateDisplayMode,
@@ -1281,14 +1436,18 @@ function Home({
   onConsultation,
   onLock,
   onCareDone,
+  onIfThenDone,
   onCalendar,
   onThought,
+  onIfThen,
   onDismissReminder,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
   consultationNotes: ConsultationNote[];
   thoughtNotes: ThoughtNote[];
   privateDisplayMode: boolean;
@@ -1300,13 +1459,16 @@ function Home({
   onConsultation: () => void;
   onLock: () => void;
   onCareDone: (plan: SelfCarePlan) => void;
+  onIfThenDone: (plan: IfThenPlan) => void;
   onCalendar: () => void;
   onThought: () => void;
+  onIfThen: () => void;
   onDismissReminder: () => void;
 }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const todayPlans = selfCarePlans.slice(0, 3);
-  const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes)[0];
+  const todayIfThenPlans = recommendIfThenPlans(ifThenPlans, ifThenLogs, suddenLogs, thoughtNotes).slice(0, 3);
+  const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs)[0];
   const openNotes = consultationNotes.filter((note) => note.status !== "done");
   const latestNote = [...consultationNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const latestThought = [...thoughtNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
@@ -1398,6 +1560,7 @@ function Home({
         )}
         <button className="secondary-btn" onClick={onCalendar}>月間ふり返りを見る</button>
         <button className="secondary-btn" onClick={onThought}>思考メモを書く</button>
+        <button className="secondary-btn" onClick={onIfThen}>If-Thenプランを見る</button>
       </section>
 
       <section className="section-block">
@@ -1412,12 +1575,21 @@ function Home({
 
       <section className="section-block">
         <h2>今日の小さな一手</h2>
-        {!todayRecord && todayPlans.length > 0 && <p className="soft-text">記録が難しい日は、小さな一手だけでも大丈夫です。</p>}
-        {todayPlans.length === 0 ? (
-          <p className="soft-text">セルフケアから自分に合いそうな行動を追加できます。</p>
+        {!todayRecord && (todayPlans.length > 0 || todayIfThenPlans.length > 0) && <p className="soft-text">記録が難しい日は、小さな一手だけでも大丈夫です。</p>}
+        {todayPlans.length === 0 && todayIfThenPlans.length === 0 ? (
+          <p className="soft-text">セルフケアやIf-Thenプランから、自分に合いそうな行動を追加できます。</p>
         ) : (
           <div className="mini-plan-list">
-            {todayPlans.map((plan) => (
+            {todayIfThenPlans.map((plan) => (
+              <article className="mini-plan ifthen-mini" key={plan.id}>
+                <div>
+                  <strong>{privateDisplayMode ? "If-Thenプランあり" : `${plan.ifText} → ${plan.thenText}`}</strong>
+                  <span>{plan.category} ・ {plan.ease}</span>
+                </div>
+                <button className="secondary-action" onClick={() => onIfThenDone(plan)}>実行した</button>
+              </article>
+            ))}
+            {todayPlans.slice(0, Math.max(0, 3 - todayIfThenPlans.length)).map((plan) => (
               <article className="mini-plan" key={plan.id}>
                 <div>
                   <strong>{plan.title}</strong>
@@ -1428,6 +1600,7 @@ function Home({
             ))}
           </div>
         )}
+        <button className="secondary-btn" onClick={onIfThen}>If-Thenプランを作る</button>
       </section>
 
       <section className="section-block">
@@ -1486,23 +1659,29 @@ function ReviewHub({
   suddenLogs,
   selfCareLogs,
   thoughtNotes,
+  ifThenPlans,
+  ifThenLogs,
   onAnalysis,
   onReport,
   onConsultation,
   onCalendar,
   onThought,
+  onIfThen,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCareLogs: SelfCareLog[];
   thoughtNotes: ThoughtNote[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
   onAnalysis: () => void;
   onReport: () => void;
   onConsultation: () => void;
   onCalendar: () => void;
   onThought: () => void;
+  onIfThen: () => void;
 }) {
-  const insight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes)[0];
+  const insight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs)[0];
 
   return (
     <section>
@@ -1525,6 +1704,7 @@ function ReviewHub({
           <button className="primary-btn" onClick={onAnalysis}>ふり返りを見る</button>
           <button className="secondary-btn no-margin" onClick={onCalendar}>カレンダーを見る</button>
           <button className="secondary-btn no-margin" onClick={onThought}>思考メモを見る</button>
+          <button className="secondary-btn no-margin" onClick={onIfThen}>If-Thenプランを見る</button>
           <button className="secondary-btn no-margin" onClick={onReport}>共有用まとめを作る</button>
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談前まとめを作る</button>
           <button className="secondary-btn no-margin" onClick={onConsultation}>AI相談文を作る</button>
@@ -1542,6 +1722,7 @@ function MenuScreen({
   onAbout,
   onHabit,
   onDisplay,
+  onIfThen,
 }: {
   onConsultation: () => void;
   onData: () => void;
@@ -1550,6 +1731,7 @@ function MenuScreen({
   onAbout: () => void;
   onHabit: () => void;
   onDisplay: () => void;
+  onIfThen: () => void;
 }) {
   return (
     <section>
@@ -1566,6 +1748,7 @@ function MenuScreen({
         <div className="data-actions">
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談ノート</button>
           <button className="secondary-btn no-margin" onClick={onHabit}>習慣サポート</button>
+          <button className="secondary-btn no-margin" onClick={onIfThen}>If-Thenプラン</button>
           <button className="secondary-btn no-margin" onClick={onDisplay}>表示設定</button>
           <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
           <button className="secondary-btn no-margin" onClick={onPrivacy}>プライバシー設定</button>
@@ -1644,6 +1827,7 @@ function HabitSupportScreen({
   flash,
   onSave,
   onDaily,
+  onIfThen,
 }: {
   settings: HabitSettings;
   dailyRecords: DailyRecord[];
@@ -1651,6 +1835,7 @@ function HabitSupportScreen({
   flash: string;
   onSave: (settings: HabitSettings) => void;
   onDaily: () => void;
+  onIfThen: () => void;
 }) {
   const [form, setForm] = useState(settings);
   const [messageMode, setMessageMode] = useState(defaultReminderMessages.includes(settings.reminderMessage) ? "デフォルト文" : "カスタム文");
@@ -1673,6 +1858,12 @@ function HabitSupportScreen({
       </header>
       <p className="soft-text">記録を続けるための小さな補助を設定できます。毎日できなくても大丈夫です。</p>
       {flash && <div className="success-message">{flash}</div>}
+
+      <section className="section-block data-card">
+        <h2>If-Thenプラン</h2>
+        <p className="soft-text">習慣にしたいことは、「もし〜したら、〜する」の形にすると、始めるタイミングが分かりやすくなります。</p>
+        <button className="secondary-btn no-margin" onClick={onIfThen}>If-Thenプランを開く</button>
+      </section>
 
       <section className="section-block data-card">
         <h2>リマインダー</h2>
@@ -1941,6 +2132,8 @@ function DataManagement({
   suddenLogs,
   selfCarePlans,
   selfCareLogs,
+  ifThenPlans,
+  ifThenLogs,
   consultationNotes,
   thoughtNotes,
   privacySettings,
@@ -1955,6 +2148,8 @@ function DataManagement({
   suddenLogs: SuddenLog[];
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
   consultationNotes: ConsultationNote[];
   thoughtNotes: ThoughtNote[];
   privacySettings: PrivacySettings;
@@ -1980,6 +2175,8 @@ function DataManagement({
     suddenLogs,
     selfCarePlans,
     selfCareLogs,
+    ifThenPlans,
+    ifThenLogs,
     consultationNotes,
     thoughtNotes,
     privacySettings: toBackupPrivacySettings(privacySettings),
@@ -2064,6 +2261,28 @@ function DataManagement({
     setMessage("思考メモCSVを作成しました。");
   };
 
+  const exportIfThenPlansCsv = () => {
+    if (!ifThenPlans.length) {
+      setError("出力できるIf-Thenプランがありません。");
+      setMessage("");
+      return;
+    }
+    downloadTextFile(`if-then-plans-${today()}.csv`, toIfThenPlansCsv(ifThenPlans), "text/csv;charset=utf-8");
+    setError("");
+    setMessage("If-ThenプランCSVを作成しました。");
+  };
+
+  const exportIfThenLogsCsv = () => {
+    if (!ifThenLogs.length) {
+      setError("出力できるIf-Then実行ログがありません。");
+      setMessage("");
+      return;
+    }
+    downloadTextFile(`if-then-logs-${today()}.csv`, toIfThenLogsCsv(ifThenLogs), "text/csv;charset=utf-8");
+    setError("");
+    setMessage("If-Then実行ログCSVを作成しました。");
+  };
+
   const refreshDrafts = () => setDrafts(listDrafts());
 
   const deleteDraft = (key: string) => {
@@ -2103,7 +2322,7 @@ function DataManagement({
 
       <section className="section-block data-card">
         <h2>JSONバックアップ</h2>
-        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、思考メモ、プライバシー設定、習慣サポート設定、表示設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。思考メモには個人的な内容が含まれることがあります。</p>
+        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、If-Thenプラン、相談メモ、思考メモ、プライバシー設定、習慣サポート設定、表示設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。思考メモやIf-Thenプランには個人的な内容が含まれることがあります。</p>
         <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
       </section>
 
@@ -2129,6 +2348,8 @@ function DataManagement({
           <button className="secondary-btn no-margin" onClick={exportSelfCareCsv}>セルフケア記録CSV</button>
           <button className="secondary-btn no-margin" onClick={exportConsultationCsv}>相談メモCSV</button>
           <button className="secondary-btn no-margin" onClick={exportThoughtCsv}>思考メモCSV</button>
+          <button className="secondary-btn no-margin" onClick={exportIfThenPlansCsv}>If-ThenプランCSV</button>
+          <button className="secondary-btn no-margin" onClick={exportIfThenLogsCsv}>If-Then実行ログCSV</button>
         </div>
       </section>
 
@@ -2155,7 +2376,7 @@ function DataManagement({
 
       <section className="section-block data-card danger-zone">
         <h2>全データ削除</h2>
-        <p className="soft-text">保存されている記録、マイプラン、セルフケア記録、相談メモ、思考メモをすべて削除します。先にバックアップを取ることをおすすめします。</p>
+        <p className="soft-text">保存されている記録、マイプラン、セルフケア記録、If-Thenプラン、相談メモ、思考メモをすべて削除します。先にバックアップを取ることをおすすめします。</p>
         <button className="delete-action full-width" onClick={onDeleteAllRequest}>すべての記録を削除</button>
       </section>
     </section>
@@ -2169,6 +2390,8 @@ function SelfCareScreen({
   onSavePlan,
   onDeletePlan,
   onCareDone,
+  onIfThen,
+  onCreateIfThen,
   onDirtyChange,
 }: {
   plans: SelfCarePlan[];
@@ -2177,6 +2400,8 @@ function SelfCareScreen({
   onSavePlan: (plan: SelfCarePlan) => void;
   onDeletePlan: (id: string) => void;
   onCareDone: (plan: SelfCarePlan) => void;
+  onIfThen: () => void;
+  onCreateIfThen: (plan: SelfCarePlan) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const [customTitle, setCustomTitle] = useState("");
@@ -2301,6 +2526,12 @@ function SelfCareScreen({
       {flash && <div className="success-message">{flash}</div>}
       <div className="notice">ここでの候補は、治療法ではなくセルフケアのヒントです。合うかどうかを記録しながら、無理のないものを選んでください。</div>
 
+      <section className="section-block data-card">
+        <h2>If-Thenプラン</h2>
+        <p className="soft-text">セルフケアを「もし〜が起きたら、〜する」の形にすると、実行するタイミングを決めやすくなります。</p>
+        <button className="secondary-btn no-margin" onClick={onIfThen}>If-Thenプランを見る</button>
+      </section>
+
       <section className="section-block">
         <h2>マイプラン</h2>
         {plans.length === 0 && <p className="soft-text">自分に合いそうな小さな行動を追加できます。</p>}
@@ -2317,6 +2548,7 @@ function SelfCareScreen({
               {plan.memo && <p className="record-snippet">{plan.memo}</p>}
               <div className="card-actions">
                 <button className="secondary-action" onClick={() => onCareDone(plan)}>できた</button>
+                <button className="secondary-action" onClick={() => onCreateIfThen(plan)}>If-Thenにする</button>
                 <button
                   className="secondary-action"
                   onClick={() => {
@@ -2432,10 +2664,336 @@ function SelfCareLogModal({ plan, onCancel, onSave }: { plan: SelfCarePlan; onCa
   );
 }
 
+function IfThenScreen({
+  plans,
+  logs,
+  flash,
+  privateDisplayMode,
+  onSavePlan,
+  onDeletePlan,
+  onTogglePlan,
+  onRunPlan,
+  onDirtyChange,
+}: {
+  plans: IfThenPlan[];
+  logs: IfThenLog[];
+  flash: string;
+  privateDisplayMode: boolean;
+  onSavePlan: (plan: IfThenPlan) => void;
+  onDeletePlan: (id: string) => void;
+  onTogglePlan: (id: string) => void;
+  onRunPlan: (plan: IfThenPlan) => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const [form, setForm] = useState<IfThenPlan>(createIfThenDraft());
+  const [editing, setEditing] = useState<IfThenPlan | null>(null);
+  const [detail, setDetail] = useState<IfThenPlan | null>(null);
+  const [message, setMessage] = useState("");
+  const [isDirty, setIsDirty] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [showRestore, setShowRestore] = useState(() => Boolean(readDraft<IfThenPlan>(ifThenDraftKey)));
+  const [isSaving, setIsSaving] = useState(false);
+  const groupedTemplates = ifThenCategories.map((category) => ({
+    category,
+    items: ifThenTemplates.filter((template) => template.category === category),
+  })).filter((group) => group.items.length);
+  const sortedPlans = [...plans].sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.updatedAt.localeCompare(a.updatedAt));
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (editing || showRestore || !isDirty) return;
+    if (!hasIfThenDraftContent(form)) {
+      removeDraft(ifThenDraftKey);
+      setDraftStatus("");
+      return;
+    }
+    setDraftStatus("下書きを保存中です");
+    const timer = window.setTimeout(() => {
+      writeDraft(ifThenDraftKey, "ifthen", form);
+      setDraftStatus("下書きを保存しました");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, editing, showRestore, isDirty]);
+
+  const updateForm = (next: IfThenPlan) => {
+    setForm(next);
+    setIsDirty(true);
+    setMessage("");
+  };
+
+  const startEdit = (plan: IfThenPlan) => {
+    setEditing(plan);
+    setForm(plan);
+    setShowRestore(false);
+    setIsDirty(false);
+    setMessage("");
+    setDraftStatus("");
+  };
+
+  const resetForm = () => {
+    setForm(createIfThenDraft());
+    setEditing(null);
+    setIsDirty(false);
+    setIsSaving(false);
+    setDraftStatus("");
+  };
+
+  const addTemplate = (template: Pick<IfThenPlan, "title" | "ifText" | "thenText" | "category" | "relatedStateTags" | "relatedThoughtTags" | "ease" | "memo">) => {
+    onSavePlan(normalizeIfThenPlan({
+      ...template,
+      id: newId(),
+      isActive: true,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    }));
+  };
+
+  const save = () => {
+    if (isSaving) return;
+    if (!form.title.trim() || !form.ifText.trim() || !form.thenText.trim()) {
+      setMessage("保存するには、タイトル・もし・そのときだけ見直してください。短い文で大丈夫です。");
+      return;
+    }
+    setIsSaving(true);
+    setIsDirty(false);
+    removeDraft(ifThenDraftKey);
+    onSavePlan({ ...form, title: form.title.trim(), ifText: form.ifText.trim(), thenText: form.thenText.trim(), updatedAt: nowIso(), createdAt: form.createdAt || nowIso() });
+    resetForm();
+  };
+
+  const restoreDraft = () => {
+    const draft = readDraft<IfThenPlan>(ifThenDraftKey);
+    if (draft) {
+      setForm(normalizeIfThenPlan(draft.data));
+      setIsDirty(true);
+      setDraftStatus("下書きを再開しました");
+    }
+    setShowRestore(false);
+  };
+
+  const discardDraft = () => {
+    removeDraft(ifThenDraftKey);
+    setShowRestore(false);
+    setDraftStatus("");
+  };
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">もし〜が起きたら、〜する</p>
+          <h1>If-Thenプラン</h1>
+        </div>
+      </header>
+      <p className="soft-text">状態の波やきっかけに合わせて、先に小さな行動を決めておけます。</p>
+      {flash && <div className="success-message">{flash}</div>}
+      {message && <div className="error-message">{message}</div>}
+
+      <section className="section-block data-card">
+        <h2>使い方</h2>
+        <p className="soft-text">If-Thenプランは、「もし〇〇が起きたら、△△する」という形で、行動のきっかけと小さな行動を先に結びつけておく方法です。</p>
+        <p className="soft-text">例：もし朝に不安感が強かったら、カーテンを開けて5分だけ光を浴びる。</p>
+        <div className="notice compact-notice">この機能は診断や治療ではなく、自分に合う整え方を見つけるためのセルフケア補助です。</div>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>{editing ? "If-Thenプランを編集" : "自分で作る"}</h2>
+        {!editing && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
+        {draftStatus && <p className="draft-status">{draftStatus}</p>}
+        <label className="field">
+          <span>タイトル <small>必要</small></span>
+          <input value={form.title} onChange={(event) => updateForm({ ...form, title: event.target.value })} placeholder="例：朝の不安感に備える" />
+        </label>
+        <TextArea label="もし" helper="きっかけ・状況を短く書けます" value={form.ifText} onChange={(ifText) => updateForm({ ...form, ifText })} placeholder="例：朝起きて不安感が強かったら" />
+        <TextArea label="そのとき" helper="小さな行動をひとつ置いておけます" value={form.thenText} onChange={(thenText) => updateForm({ ...form, thenText })} placeholder="例：カーテンを開けて5分だけ光を浴びる" />
+        <Choice label="カテゴリ" options={ifThenCategories} value={form.category} onChange={(category) => updateForm({ ...form, category: category as IfThenCategory })} />
+        <MultiChoice label="関連する状態タグ" options={stateTagOptions} values={form.relatedStateTags} onChange={(relatedStateTags) => updateForm({ ...form, relatedStateTags })} />
+        <MultiChoice label="関連する思考タグ" options={thoughtTagOptions} values={form.relatedThoughtTags} onChange={(relatedThoughtTags) => updateForm({ ...form, relatedThoughtTags })} />
+        <Choice label="実行しやすさ" options={ifThenEaseOptions} value={form.ease} onChange={(ease) => updateForm({ ...form, ease: ease as IfThenEase })} />
+        <Choice label="状態" options={["有効", "一時停止"]} value={form.isActive ? "有効" : "一時停止"} onChange={(value) => updateForm({ ...form, isActive: value === "有効" })} />
+        <TextArea label="メモ" helper="任意。自分向けの補足を書けます" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} />
+        <div className="data-actions">
+          <button className="primary-btn" disabled={isSaving} onClick={save}>{isSaving ? "保存しています" : editing ? "更新する" : "追加する"}</button>
+          {editing && <button className="secondary-btn no-margin" onClick={resetForm}>編集をやめる</button>}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <h2>テンプレートから追加</h2>
+        {groupedTemplates.map((group) => (
+          <div className="candidate-group" key={group.category}>
+            <h3>{group.category}</h3>
+            <div className="record-list">
+              {group.items.map((template) => (
+                <article className="candidate-card ifthen-card" key={`${template.ifText}-${template.thenText}`}>
+                  <div>
+                    <strong>{template.title}</strong>
+                    <p><span>もし</span> {template.ifText}</p>
+                    <p><span>そのとき</span> {template.thenText}</p>
+                  </div>
+                  <button className="secondary-action" onClick={() => addTemplate(template)}>追加</button>
+                </article>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="section-block">
+        <h2>プラン一覧</h2>
+        {sortedPlans.length === 0 ? (
+          <p className="soft-text">まだIf-Thenプランはありません。テンプレートから小さく始められます。</p>
+        ) : (
+          <div className="record-list">
+            {sortedPlans.map((plan) => {
+              const planLogs = logs.filter((log) => log.planId === plan.id);
+              const lastLog = planLogs[0];
+              return (
+                <article className="record-card ifthen-card" key={plan.id}>
+                  <div className="record-card-head">
+                    <div>
+                      <p className="label">{plan.category} ・ {plan.ease}</p>
+                      <h2>{privateDisplayMode ? "プランあり" : plan.title}</h2>
+                    </div>
+                    <span className="badge">{plan.isActive ? "有効" : "一時停止"}</span>
+                  </div>
+                  <div className="ifthen-flow">
+                    <p><span>もし</span>{privateDisplayMode ? "内容は非表示です" : plan.ifText}</p>
+                    <p><span>そのとき</span>{privateDisplayMode ? "内容は非表示です" : plan.thenText}</p>
+                  </div>
+                  <TagList tags={[...plan.relatedStateTags, ...plan.relatedThoughtTags]} empty="関連タグなし" />
+                  <div className="compact-metrics">
+                    <Metric label="実行回数" value={`${planLogs.length}回`} />
+                    <Metric label="最終実行" value={lastLog ? formatDateTime(lastLog.createdAt) : "なし"} />
+                  </div>
+                  {plan.memo && <p className="record-snippet">{privateDisplayMode ? "メモは非表示です" : plan.memo}</p>}
+                  <div className="card-actions">
+                    <button className="secondary-action" onClick={() => setDetail(plan)}>詳細</button>
+                    <button className="secondary-action" onClick={() => startEdit(plan)}>編集</button>
+                    <button className="secondary-action" onClick={() => onRunPlan(plan)} disabled={!plan.isActive}>実行した</button>
+                    <button className="secondary-action" onClick={() => onTogglePlan(plan.id)}>{plan.isActive ? "一時停止" : "再開"}</button>
+                    <button className="delete-action" onClick={() => onDeletePlan(plan.id)}>削除</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="section-block">
+        <h2>最近の実行ログ</h2>
+        {logs.length === 0 ? (
+          <p className="soft-text">まだ実行ログはありません。</p>
+        ) : (
+          <div className="detail-list">
+            {logs.slice(0, 6).map((log) => (
+              <div className="detail-row" key={log.id}>
+                <span>{formatDateTime(log.createdAt)}</span>
+                <strong>{privateDisplayMode ? "実行ログあり" : `${log.planTitle} / ${log.result}`}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {detail && <IfThenDetailModal plan={detail} logs={logs.filter((log) => log.planId === detail.id)} privateDisplayMode={privateDisplayMode} onClose={() => setDetail(null)} />}
+    </section>
+  );
+}
+
+function IfThenDetailModal({ plan, logs, privateDisplayMode, onClose }: { plan: IfThenPlan; logs: IfThenLog[]; privateDisplayMode: boolean; onClose: () => void }) {
+  const hidden = privateDisplayMode ? "内容は非表示です" : "";
+  const rows = [
+    ["タイトル", hidden || plan.title],
+    ["もし", hidden || plan.ifText],
+    ["そのとき", hidden || plan.thenText],
+    ["カテゴリ", plan.category],
+    ["関連状態タグ", joinTags(plan.relatedStateTags)],
+    ["関連思考タグ", joinTags(plan.relatedThoughtTags)],
+    ["実行しやすさ", plan.ease],
+    ["状態", plan.isActive ? "有効" : "一時停止"],
+    ["実行回数", `${logs.length}回`],
+    ["最終実行", logs[0] ? formatDateTime(logs[0].createdAt) : "なし"],
+    ["メモ", hidden || plan.memo || "未入力"],
+  ];
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="detail-modal">
+        <div className="modal-head">
+          <div>
+            <p className="eyebrow">If-Thenプラン</p>
+            <h2>詳細</h2>
+          </div>
+          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+        </div>
+        <div className="detail-list">
+          {rows.map(([label, value]) => (
+            <div className="detail-row" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IfThenLogModal({ plan, onCancel, onSave }: { plan: IfThenPlan; onCancel: () => void; onSave: (log: IfThenLog) => void }) {
+  const [result, setResult] = useState<SelfCareResult>("後で振り返る");
+  const [memo, setMemo] = useState("");
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="confirm-modal">
+        <h2>実行した記録</h2>
+        <p>{plan.ifText} → {plan.thenText}</p>
+        <Choice label="実行後の感じ方" options={["少し整った", "変化は少なめ", "今は合わなかった", "後で振り返る"]} value={result} onChange={(value) => setResult(value as SelfCareResult)} />
+        <TextArea label="メモ" helper="短く残せます" value={memo} onChange={setMemo} />
+        <div className="confirm-actions">
+          <button className="secondary-action" onClick={onCancel}>キャンセル</button>
+          <button
+            className="primary-btn"
+            onClick={() =>
+              onSave({
+                id: newId(),
+                planId: plan.id,
+                planTitle: plan.title,
+                ifText: plan.ifText,
+                thenText: plan.thenText,
+                result,
+                memo,
+                createdAt: nowIso(),
+              })
+            }
+          >
+            保存する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConsultationScreen({
   dailyRecords,
   suddenLogs,
   selfCareLogs,
+  ifThenPlans,
+  ifThenLogs,
   thoughtNotes,
   notes,
   flash,
@@ -2448,6 +3006,8 @@ function ConsultationScreen({
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCareLogs: SelfCareLog[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
   thoughtNotes: ThoughtNote[];
   notes: ConsultationNote[];
   flash: string;
@@ -2469,7 +3029,7 @@ function ConsultationScreen({
   const [showRestore, setShowRestore] = useState(() => Boolean(readDraft<ConsultationNote>(consultationDraftKey)));
   const [isSaving, setIsSaving] = useState(false);
   const sortedNotes = [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const prepSummary = buildConsultationSummary(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, notes);
+  const prepSummary = buildConsultationSummary(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, notes);
   const aiText = buildConsultationAiPrompt(prepSummary);
 
   const startEdit = (note: ConsultationNote) => {
@@ -2711,6 +3271,9 @@ function ThoughtNotesScreen({
   onSave,
   onEdit,
   onDelete,
+  ifThenPlans,
+  onIfThenDone,
+  onCreateIfThen,
   onDirtyChange,
 }: {
   notes: ThoughtNote[];
@@ -2721,6 +3284,9 @@ function ThoughtNotesScreen({
   onSave: (note: ThoughtNote) => void;
   onEdit: (note: ThoughtNote) => void;
   onDelete: (id: string) => void;
+  ifThenPlans: IfThenPlan[];
+  onIfThenDone: (plan: IfThenPlan) => void;
+  onCreateIfThen: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const createBlank = (): ThoughtNote => {
@@ -2741,6 +3307,7 @@ function ThoughtNotesScreen({
   const [showRestore, setShowRestore] = useState(() => !initial && !prefill && Boolean(readDraft<ThoughtNote>(thoughtDraftKey)));
   const [isSaving, setIsSaving] = useState(false);
   const sortedNotes = [...notes].sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
+  const relatedIfThen = findIfThenByThoughtTags(ifThenPlans, form.thoughtTags).slice(0, 3);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -2845,6 +3412,27 @@ function ThoughtNotesScreen({
           <button className="primary-btn" disabled={isSaving} onClick={save}>{isSaving ? "保存しています" : initial ? "更新する" : "保存する"}</button>
           {initial && <button className="secondary-btn no-margin" onClick={resetForm}>編集をやめる</button>}
         </div>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>If-Thenプラン</h2>
+        <p className="soft-text">この考え方が出たとき用の小さな行動を決めておけます。</p>
+        {relatedIfThen.length > 0 ? (
+          <div className="mini-plan-list">
+            {relatedIfThen.map((plan) => (
+              <article className="mini-plan ifthen-mini" key={plan.id}>
+                <div>
+                  <strong>{privateDisplayMode ? "プランあり" : `${plan.ifText} → ${plan.thenText}`}</strong>
+                  <span>{plan.category}</span>
+                </div>
+                <button className="secondary-action" onClick={() => onIfThenDone(plan)}>実行した</button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="soft-text">一致するプランがない場合は、思考タグをヒントに新しく作れます。</p>
+        )}
+        <button className="secondary-btn" onClick={onCreateIfThen}>If-Thenプランを作る</button>
       </section>
 
       <section className="section-block">
@@ -3314,10 +3902,10 @@ function SuddenForm({
   );
 }
 
-function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[] }) {
+function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[]; ifThenPlans: IfThenPlan[]; ifThenLogs: IfThenLog[] }) {
   const sortedDaily = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date));
   const highDaily = sortedDaily.slice(-14);
-  const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes);
+  const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const weatherMood = groupedAverage(dailyRecords, (record) => record.weather, (record) => record.mood);
   const exerciseMood = groupedAverage(dailyRecords, (record) => (record.exercise === "なし" ? "運動なし" : "運動あり"), (record) => record.mood);
   const sleepRecords = dailyRecords.filter(hasSleepHours);
@@ -3332,6 +3920,11 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes }: { da
   const hourCounts = countBy(suddenLogs, (log) => `${new Date(log.occurredAt).getHours()}時台`);
   const selfCareCounts = countBy(selfCareLogs, (log) => log.title);
   const selfCareResultCounts = countBy(selfCareLogs, (log) => log.result);
+  const ifThenCounts = countBy(ifThenLogs, (log) => log.planTitle);
+  const ifThenSettled = countBy(ifThenLogs.filter((log) => log.result === "少し整った"), (log) => log.planTitle);
+  const ifThenNotFit = countBy(ifThenLogs.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle);
+  const ifThenStateTagCounts = countFlat(ifThenPlans.flatMap((plan) => plan.relatedStateTags));
+  const ifThenThoughtTagCounts = countFlat(ifThenPlans.flatMap((plan) => plan.relatedThoughtTags));
   const thoughtTagCounts = countFlat([
     ...thoughtNotes.flatMap((note) => note.thoughtTags),
     ...dailyRecords.flatMap((record) => record.thoughtTags || []),
@@ -3423,6 +4016,28 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes }: { da
       </section>
 
       <section className="section-block">
+        <h2>If-Thenプラン</h2>
+        {ifThenPlans.length === 0 && ifThenLogs.length === 0 ? (
+          <EmptyState text="まだIf-Thenプランはありません。小さな行動を先に決めておくと、始めるタイミングが見えやすくなります。" />
+        ) : (
+          <>
+            <p className="soft-text">記録上、使いやすい可能性があります。参考情報として見てください。</p>
+            <div className="summary-list">
+              <Metric label="プラン数" value={`${ifThenPlans.length}件`} />
+              <Metric label="有効なプラン" value={`${ifThenPlans.filter((plan) => plan.isActive).length}件`} />
+              <Metric label="実行回数" value={`${ifThenLogs.length}回`} />
+              <Metric label="最近の実行" value={ifThenLogs[0] ? formatDateTime(ifThenLogs[0].createdAt) : "なし"} />
+            </div>
+            <KeyValueList title="よく実行したプラン" items={ifThenCounts} suffix="回" />
+            <KeyValueList title="実行後に整ったと感じたプラン" items={ifThenSettled} suffix="回" />
+            <KeyValueList title="今は合わなかったプラン" items={ifThenNotFit} suffix="回" />
+            <KeyValueList title="関連状態タグ別の傾向" items={ifThenStateTagCounts} suffix="件" />
+            <KeyValueList title="関連思考タグ別の傾向" items={ifThenThoughtTagCounts} suffix="件" />
+          </>
+        )}
+      </section>
+
+      <section className="section-block">
         <h2>セルフケア</h2>
         {selfCareLogs.length === 0 ? (
           <EmptyState text="まだセルフケア記録がありません" />
@@ -3448,6 +4063,8 @@ function Report({
   selfCareLogs,
   consultationNotes,
   thoughtNotes,
+  ifThenPlans,
+  ifThenLogs,
   onOpenConsultation,
 }: {
   dailyRecords: DailyRecord[];
@@ -3455,6 +4072,8 @@ function Report({
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
   thoughtNotes: ThoughtNote[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
   onOpenConsultation: () => void;
 }) {
   const [period, setPeriod] = useState(7);
@@ -3463,8 +4082,9 @@ function Report({
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
   const careInPeriod = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
   const thoughtInPeriod = thoughtNotes.filter((note) => daysAgo(note.date) < period);
-  const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3 && thoughtInPeriod.length < 3;
-  const reportInsights = calculateInsights(daily, sudden, careInPeriod, thoughtInPeriod);
+  const ifThenLogsInPeriod = ifThenLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
+  const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3 && thoughtInPeriod.length < 3 && ifThenLogsInPeriod.length < 3;
+  const reportInsights = calculateInsights(daily, sudden, careInPeriod, thoughtInPeriod, ifThenPlans, ifThenLogsInPeriod);
   const monthlySummaryText = buildMonthlySummaryText(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs);
   const insightSummary = reportInsights.length
     ? reportInsights.slice(0, 5).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
@@ -3484,6 +4104,10 @@ function Report({
   const topThoughtSituations = countBy(thoughtInPeriod.filter((note) => note.situation.trim()), (note) => note.situation.trim()).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const thoughtIntensity = formatAverageWithSuffix(formatAverage(thoughtInPeriod.map((note) => note.intensity)), "/10");
   const selfCompassionWords = thoughtInPeriod.filter((note) => note.selfCompassion.trim()).slice(0, 3).map((note) => `- ${note.selfCompassion}`).join("\n") || "記録なし";
+  const activeIfThen = ifThenPlans.filter((plan) => plan.isActive).slice(0, 5).map((plan) => `- ${plan.title}: もし ${plan.ifText} / そのとき ${plan.thenText}`).join("\n") || "記録なし";
+  const topIfThen = countBy(ifThenLogsInPeriod, (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const settledIfThen = countBy(ifThenLogsInPeriod.filter((log) => log.result === "少し整った"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const notFitIfThen = countBy(ifThenLogsInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const pendingNotes = consultationNotes.filter((note) => note.status !== "done");
   const doneNotes = consultationNotes.filter((note) => note.status === "done");
   const includedNotes = consultationNotes.filter((note) => note.includeInReport || note.status !== "done").slice(0, 5);
@@ -3512,6 +4136,11 @@ ${fewRecordsNote}
 感情の強さの傾向: ${thoughtIntensity}
 自分にかけたい言葉:
 ${selfCompassionWords}
+作成しているIf-Thenプラン:
+${activeIfThen}
+よく実行したIf-Thenプラン: ${topIfThen}
+実行後に整ったと感じたIf-Thenプラン: ${settledIfThen}
+今は合わなかったIf-Thenプラン: ${notFitIfThen}
 未相談のメモ: ${pendingNotes.length}件
 相談済みのメモ: ${doneNotes.length}件
 
@@ -3530,6 +4159,7 @@ ${monthlySummaryText}
 医師や専門家に相談すべき点を分けてください。
 生活面で見直せそうな候補は、断定せず「可能性」「参考情報」として提示してください。
 思考の傾向として整理し、本人を責める表現は避けてください。
+If-Thenプランはセルフケア補助として扱い、本人を責める表現は避けてください。
 睡眠、天気、外出、突発ログ、セルフケアの要約も含めてください。
 
 ${summary}`;
@@ -3881,7 +4511,7 @@ function InsightCard({ insight }: { insight: Insight }) {
   return (
     <article className="insight-card">
       <div className="insight-card-head">
-        <span>{insight.group === "daily" ? "日々の記録" : insight.group === "sudden" ? "突発ログ" : insight.group === "selfcare" ? "セルフケア" : "思考メモ"}</span>
+        <span>{insight.group === "daily" ? "日々の記録" : insight.group === "sudden" ? "突発ログ" : insight.group === "selfcare" ? "セルフケア" : insight.group === "ifthen" ? "If-Then" : "思考メモ"}</span>
         <strong>{insight.relatedCount}件</strong>
       </div>
       <h3>{insight.title}</h3>
@@ -4097,7 +4727,7 @@ function groupedAverage<T>(items: T[], keyer: (item: T) => string, valuer: (item
   return [...groups.entries()].map(([key, values]) => [key, formatAverage(values)]);
 }
 
-function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[] = []) {
+function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[] = [], ifThenPlans: IfThenPlan[] = [], ifThenLogs: IfThenLog[] = []) {
   return [
     ...calculateSleepInsights(dailyRecords),
     ...calculateWeatherInsights(dailyRecords),
@@ -4106,6 +4736,7 @@ function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[],
     ...calculateSuddenLogInsights(suddenLogs),
     ...calculateSelfCareInsights(selfCareLogs),
     ...calculateThoughtInsights(thoughtNotes, dailyRecords),
+    ...calculateIfThenInsights(ifThenPlans, ifThenLogs),
   ].slice(0, 8);
 }
 
@@ -4367,6 +4998,62 @@ function calculateThoughtInsights(notes: ThoughtNote[], dailyRecords: DailyRecor
   }];
 }
 
+function calculateIfThenInsights(plans: IfThenPlan[], logs: IfThenLog[]): Insight[] {
+  const recent = logs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < 30);
+  if (plans.length < 1 && recent.length < 3) return [];
+  const insights: Insight[] = [];
+  const activeCount = plans.filter((plan) => plan.isActive).length;
+  const topPlan = countBy(recent, (log) => log.planTitle)[0];
+  const settled = countBy(recent.filter((log) => log.result === "少し整った"), (log) => log.planTitle)[0];
+  const notFit = countBy(recent.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle)[0];
+
+  if (activeCount > 0) {
+    insights.push({
+      id: "ifthen-active",
+      group: "ifthen",
+      title: "小さな行動を先に決めたプランがあります",
+      description: `有効なIf-Thenプランが${activeCount}件あります。状態の波があるときの行動候補として使えます。`,
+      relatedCount: activeCount,
+      action: "最近の状態タグや思考タグと合わせて、使いやすい場面を見返せます。",
+      note: "セルフケア補助としての記録上の情報です。",
+    });
+  }
+  if (topPlan && topPlan[1] >= 2) {
+    insights.push({
+      id: "ifthen-frequent",
+      group: "ifthen",
+      title: "よく実行しているIf-Thenプランがあります",
+      description: `「${topPlan[0]}」が${topPlan[1]}回記録されています。使いやすい可能性があります。`,
+      relatedCount: topPlan[1],
+      action: "どんなタイミングで実行しやすかったか、メモと一緒に見返せます。",
+      note: "記録上の傾向です。必ず合うという意味ではありません。",
+    });
+  }
+  if (settled && settled[1] >= 2) {
+    insights.push({
+      id: "ifthen-settled",
+      group: "ifthen",
+      title: "整いやすい可能性があるIf-Thenプランがあります",
+      description: `「${settled[0]}」は、実行後に「少し整った」と${settled[1]}回記録されています。`,
+      relatedCount: settled[1],
+      action: "使いやすかった条件を相談時の材料として残せます。",
+      note: "参考情報として見てください。効果を断定するものではありません。",
+    });
+  }
+  if (notFit && notFit[1] >= 2) {
+    insights.push({
+      id: "ifthen-not-fit",
+      group: "ifthen",
+      title: "今の状態では合いにくい日があるかもしれません",
+      description: `「${notFit[0]}」は、「今は合わなかった」と${notFit[1]}回記録されています。`,
+      relatedCount: notFit[1],
+      action: "行動をもっと小さくする、別のタイミングにするなどの候補を考える材料になります。",
+      note: "無理に続ける必要はありません。",
+    });
+  }
+  return insights.slice(0, 3);
+}
+
 function groupItems<T>(items: T[], keyer: (item: T) => string) {
   const groups = new Map<string, T[]>();
   items.forEach((item) => {
@@ -4389,6 +5076,7 @@ function firstKey(items: [string, number][]) {
 function navGroup(screen: Screen) {
   if (screen === "daily" || screen === "sudden" || screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report" || screen === "thought") return "review";
+  if (screen === "ifthen") return "selfcare";
   if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
   return screen;
 }
@@ -4411,12 +5099,91 @@ function createConsultationDraft(): ConsultationNote {
   };
 }
 
-function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[], notes: ConsultationNote[]) {
+function createIfThenDraft(): IfThenPlan {
+  const timestamp = nowIso();
+  return {
+    id: newId(),
+    title: "",
+    ifText: "",
+    thenText: "",
+    category: "体を整える",
+    relatedStateTags: [],
+    relatedThoughtTags: [],
+    ease: "すぐできそう",
+    memo: "",
+    isActive: true,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function createIfThenFromSelfCare(plan: SelfCarePlan): IfThenPlan {
+  const timestamp = nowIso();
+  return {
+    id: newId(),
+    title: `${plan.title}のIf-Then`,
+    ifText: "実行しやすそうなタイミングが来たら",
+    thenText: plan.title,
+    category: plan.category === "習慣を見直す" ? "その他" : plan.category,
+    relatedStateTags: [],
+    relatedThoughtTags: [],
+    ease: "すぐできそう",
+    memo: plan.memo,
+    isActive: true,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function hasIfThenDraftContent(plan: IfThenPlan) {
+  return Boolean(
+    plan.title.trim() ||
+      plan.ifText.trim() ||
+      plan.thenText.trim() ||
+      plan.relatedStateTags.length ||
+      plan.relatedThoughtTags.length ||
+      plan.memo.trim(),
+  );
+}
+
+function findIfThenByStateTags(plans: IfThenPlan[], stateTags: string[]) {
+  if (!stateTags.length) return [];
+  return plans.filter((plan) => plan.isActive && plan.relatedStateTags.some((tag) => stateTags.includes(tag)));
+}
+
+function findIfThenByThoughtTags(plans: IfThenPlan[], thoughtTags: string[]) {
+  if (!thoughtTags.length) return [];
+  return plans.filter((plan) => plan.isActive && plan.relatedThoughtTags.some((tag) => thoughtTags.includes(tag)));
+}
+
+function recommendIfThenPlans(plans: IfThenPlan[], logs: IfThenLog[], suddenLogs: SuddenLog[], thoughtNotes: ThoughtNote[]) {
+  const active = plans.filter((plan) => plan.isActive);
+  const latestSudden = [...suddenLogs].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0];
+  const latestThought = [...thoughtNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  const matched = [
+    ...findIfThenByStateTags(active, latestSudden?.stateTags || []),
+    ...findIfThenByThoughtTags(active, latestThought?.thoughtTags || []),
+  ];
+  const seen = new Set<string>();
+  const uniqueMatched = matched.filter((plan) => {
+    if (seen.has(plan.id)) return false;
+    seen.add(plan.id);
+    return true;
+  });
+  const lastRunMap = new Map(logs.map((log) => [log.planId, log.createdAt]));
+  const fallback = active
+    .filter((plan) => !seen.has(plan.id))
+    .sort((a, b) => (lastRunMap.get(a.id) || "").localeCompare(lastRunMap.get(b.id) || ""));
+  return [...uniqueMatched, ...fallback];
+}
+
+function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[], ifThenPlans: IfThenPlan[], ifThenLogs: IfThenLog[], notes: ConsultationNote[]) {
   const daily = dailyRecords.filter((record) => daysAgo(record.date) < period);
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
   const care = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
   const thoughts = thoughtNotes.filter((note) => daysAgo(note.date) < period);
-  const insights = calculateInsights(daily, sudden, care, thoughts);
+  const ifThenInPeriod = ifThenLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
+  const insights = calculateInsights(daily, sudden, care, thoughts, ifThenPlans, ifThenInPeriod);
   const waveDays = daily.filter(hasLargeWaveScore).map((record) => record.date).join("、") || "目立つ記録なし";
   const topTags = countFlat(sudden.flatMap((log) => log.stateTags)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topTriggers = countFlat(sudden.flatMap((log) => log.triggers)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
@@ -4430,6 +5197,10 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
   const topThoughtSituations = countBy(thoughts.filter((note) => note.situation.trim()), (note) => note.situation.trim()).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const thoughtIntensity = formatAverageWithSuffix(formatAverage(thoughts.map((note) => note.intensity)), "/10");
   const compassionLines = thoughts.filter((note) => note.selfCompassion.trim()).slice(0, 3).map((note) => `- ${note.selfCompassion}`).join("\n") || "記録なし";
+  const activeIfThen = ifThenPlans.filter((plan) => plan.isActive).slice(0, 5).map((plan) => `- ${plan.title}: もし ${plan.ifText} / そのとき ${plan.thenText}`).join("\n") || "記録なし";
+  const topIfThen = countBy(ifThenInPeriod, (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const settledIfThen = countBy(ifThenInPeriod.filter((log) => log.result === "少し整った"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const notFitIfThen = countBy(ifThenInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const noteLines = notes.length
     ? notes.slice(0, 8).map((note) => `- ${note.title || "相談メモ"}（${targetLabel(note.target)} / ${statusLabel(note.status)}）: ${note.mainTopic || note.recentConcern || note.dontForgetMemo || "内容未記入"}`).join("\n")
     : "相談メモはまだありません。";
@@ -4453,6 +5224,11 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
 感情の強さの傾向: ${thoughtIntensity}
 自分にかけたい言葉:
 ${compassionLines}
+作成しているIf-Thenプラン:
+${activeIfThen}
+よく実行したIf-Thenプラン: ${topIfThen}
+整いやすい可能性があったIf-Thenプラン: ${settledIfThen}
+今は合わなかったIf-Thenプラン: ${notFitIfThen}
 
 記録から見える傾向:
 ${insightLines}
@@ -4484,6 +5260,7 @@ function buildConsultationAiPrompt(summary: string) {
 服薬やサプリの指示はしないでください。
 記録上の傾向として整理してください。
 思考の傾向として整理し、本人を責める表現は避けてください。
+If-Thenプランはセルフケア補助として扱い、本人を責める表現は避けてください。
 医師や専門家に相談した方がよい点を分けてください。
 生活面で見直せそうな候補があれば、断定せずに提示してください。
 
@@ -4695,6 +5472,8 @@ function normalizeBackupData(data: unknown): BackupData {
       suddenLogs: [],
       selfCarePlans: [],
       selfCareLogs: [],
+      ifThenPlans: [],
+      ifThenLogs: [],
       consultationNotes: [],
       thoughtNotes: [],
       privacySettings: toBackupPrivacySettings(defaultPrivacySettings()),
@@ -4710,6 +5489,8 @@ function normalizeBackupData(data: unknown): BackupData {
     suddenLogs?: Partial<SuddenLog>[];
     selfCarePlans?: Partial<SelfCarePlan>[];
     selfCareLogs?: Partial<SelfCareLog>[];
+    ifThenPlans?: Partial<IfThenPlan>[];
+    ifThenLogs?: Partial<IfThenLog>[];
     consultationNotes?: Partial<ConsultationNote>[];
     thoughtNotes?: Partial<ThoughtNote>[];
     privacySettings?: BackupPrivacySettings;
@@ -4723,6 +5504,8 @@ function normalizeBackupData(data: unknown): BackupData {
   const sudden = source.suddenLogs || source.sudden;
   const plans = source.selfCarePlans || [];
   const logs = source.selfCareLogs || [];
+  const ifThenPlans = source.ifThenPlans || [];
+  const ifThenLogs = source.ifThenLogs || [];
   const notes = source.consultationNotes || [];
   const thoughtNotes = source.thoughtNotes || [];
   if (!Array.isArray(daily) || !Array.isArray(sudden)) throw new Error("Invalid backup");
@@ -4733,6 +5516,8 @@ function normalizeBackupData(data: unknown): BackupData {
     suddenLogs: sudden.map(normalizeSuddenLog),
     selfCarePlans: Array.isArray(plans) ? plans.map(normalizeSelfCarePlan) : [],
     selfCareLogs: Array.isArray(logs) ? logs.map(normalizeSelfCareLog) : [],
+    ifThenPlans: Array.isArray(ifThenPlans) ? ifThenPlans.map(normalizeIfThenPlan) : [],
+    ifThenLogs: Array.isArray(ifThenLogs) ? ifThenLogs.map(normalizeIfThenLog) : [],
     consultationNotes: Array.isArray(notes) ? notes.map(normalizeConsultationNote) : [],
     thoughtNotes: Array.isArray(thoughtNotes) ? thoughtNotes.map(normalizeThoughtNote) : [],
     privacySettings: source.privacySettings ? {
@@ -4838,6 +5623,41 @@ function toThoughtCsv(notes: ThoughtNote[]) {
   return `\uFEFF${rows.map(csvRow).join("\n")}`;
 }
 
+function toIfThenPlansCsv(plans: IfThenPlan[]) {
+  const rows = [
+    ["タイトル", "もし", "そのとき", "カテゴリ", "関連状態タグ", "関連思考タグ", "実行しやすさ", "有効状態", "メモ", "作成日", "更新日"],
+    ...plans.map((plan) => [
+      plan.title,
+      plan.ifText,
+      plan.thenText,
+      plan.category,
+      plan.relatedStateTags.join("、"),
+      plan.relatedThoughtTags.join("、"),
+      plan.ease,
+      plan.isActive ? "有効" : "一時停止",
+      plan.memo,
+      formatDateTime(plan.createdAt),
+      formatDateTime(plan.updatedAt),
+    ]),
+  ];
+  return `\uFEFF${rows.map(csvRow).join("\n")}`;
+}
+
+function toIfThenLogsCsv(logs: IfThenLog[]) {
+  const rows = [
+    ["実行日時", "プランタイトル", "もし", "そのとき", "実行後の感じ方", "メモ"],
+    ...logs.map((log) => [
+      formatDateTime(log.createdAt),
+      log.planTitle,
+      log.ifText,
+      log.thenText,
+      log.result,
+      log.memo,
+    ]),
+  ];
+  return `\uFEFF${rows.map(csvRow).join("\n")}`;
+}
+
 function csvRow(values: Array<string | number | null>) {
   return values.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",");
 }
@@ -4913,6 +5733,37 @@ function normalizeSelfCareLog(log: Partial<SelfCareLog>): SelfCareLog {
   };
 }
 
+function normalizeIfThenPlan(plan: Partial<IfThenPlan>): IfThenPlan {
+  const timestamp = plan.createdAt || nowIso();
+  return {
+    id: plan.id || newId(),
+    title: plan.title || "If-Thenプラン",
+    ifText: plan.ifText || "",
+    thenText: plan.thenText || "",
+    category: normalizeIfThenCategory(plan.category),
+    relatedStateTags: normalizeStringArray(plan.relatedStateTags).map(mapLegacyStateTag),
+    relatedThoughtTags: normalizeThoughtTags(plan.relatedThoughtTags),
+    ease: normalizeIfThenEase(plan.ease),
+    memo: plan.memo || "",
+    isActive: plan.isActive ?? true,
+    createdAt: timestamp,
+    updatedAt: plan.updatedAt || timestamp,
+  };
+}
+
+function normalizeIfThenLog(log: Partial<IfThenLog>): IfThenLog {
+  return {
+    id: log.id || newId(),
+    planId: log.planId || "",
+    planTitle: log.planTitle || "If-Thenプラン",
+    ifText: log.ifText || "",
+    thenText: log.thenText || "",
+    result: normalizeSelfCareResult(log.result),
+    memo: log.memo || "",
+    createdAt: log.createdAt || nowIso(),
+  };
+}
+
 function normalizeConsultationNote(note: Partial<ConsultationNote>): ConsultationNote {
   const timestamp = note.createdAt || nowIso();
   return {
@@ -4955,6 +5806,14 @@ function normalizeSelfCareCategory(category?: string): SelfCareCategory {
   return selfCareCategories.includes(category as SelfCareCategory) ? (category as SelfCareCategory) : "体を整える";
 }
 
+function normalizeIfThenCategory(category?: string): IfThenCategory {
+  return ifThenCategories.includes(category as IfThenCategory) ? (category as IfThenCategory) : "その他";
+}
+
+function normalizeIfThenEase(ease?: string): IfThenEase {
+  return ifThenEaseOptions.includes(ease as IfThenEase) ? (ease as IfThenEase) : "すぐできそう";
+}
+
 function normalizeSelfCareResult(result?: string): SelfCareResult {
   const options: SelfCareResult[] = ["少し整った", "変化は少なめ", "今は合わなかった", "後で振り返る"];
   return options.includes(result as SelfCareResult) ? (result as SelfCareResult) : "後で振り返る";
@@ -4972,6 +5831,10 @@ function normalizeStateTags(tags?: string[], legacyState?: string) {
 
 function normalizeThoughtTags(tags?: string[]) {
   return Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string" && tag.trim()).map((tag) => tag.trim()) : [];
+}
+
+function normalizeStringArray(values?: string[]) {
+  return Array.isArray(values) ? values.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()) : [];
 }
 
 function mapLegacyStateTag(tag: string) {
