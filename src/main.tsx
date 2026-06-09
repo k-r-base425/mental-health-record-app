@@ -9,10 +9,10 @@ type RiskLevel = "低" | "中" | "高";
 type DailyRecord = {
   id: string;
   date: string;
-  mood: number;
-  anxiety: number;
-  irritability: number;
-  fatigue: number;
+  mood: number | null;
+  anxiety: number | null;
+  irritability: number | null;
+  fatigue: number | null;
   sleepHours: number | null;
   sleepQuality: SleepQuality;
   weather: DailyChoice;
@@ -32,7 +32,7 @@ type SuddenLog = {
   occurredAt: string;
   stateTags: string[];
   stateType?: string;
-  intensity: number;
+  intensity: number | null;
   riskLevel?: RiskLevel;
   triggers: string[];
   place: string;
@@ -131,6 +131,12 @@ type BackupData = {
   privacySettings: BackupPrivacySettings;
 };
 
+type DraftEnvelope<T> = {
+  formType: string;
+  data: T;
+  updatedAt: string;
+};
+
 const dailyStorageKey = "self-compass-daily-records";
 const suddenStorageKey = "self-compass-sudden-logs";
 const selfCarePlansStorageKey = "selfCarePlans";
@@ -139,6 +145,10 @@ const consultationNotesStorageKey = "consultationNotes";
 const privacySettingsStorageKey = "privacySettings";
 const onboardingCompletedStorageKey = "onboardingCompleted";
 const onboardingCompletedAtStorageKey = "onboardingCompletedAt";
+const dailyDraftKey = "dailyRecordDraft";
+const suddenDraftKey = "suddenLogDraft";
+const consultationDraftKey = "consultationNoteDraft";
+const selfCareDraftKey = "selfCareDraft";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -175,6 +185,13 @@ const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo"
   { title: "何もしない時間を作る", category: "休む", memo: "短い余白を作る" },
 ];
 
+const draftDefinitions = [
+  { key: dailyDraftKey, label: "今日の記録" },
+  { key: suddenDraftKey, label: "突発ログ" },
+  { key: consultationDraftKey, label: "相談ノート" },
+  { key: selfCareDraftKey, label: "カスタムセルフケア" },
+];
+
 const onboardingSteps = [
   {
     title: "Self Compassへようこそ",
@@ -204,6 +221,33 @@ function readStorage<T>(key: string): T[] {
   } catch {
     return [];
   }
+}
+
+function readDraft<T>(key: string): DraftEnvelope<T> | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DraftEnvelope<T>;
+    return parsed?.data ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft<T>(key: string, formType: string, data: T) {
+  const draft: DraftEnvelope<T> = { formType, data, updatedAt: nowIso() };
+  localStorage.setItem(key, JSON.stringify(draft));
+}
+
+function removeDraft(key: string) {
+  localStorage.removeItem(key);
+}
+
+function listDrafts() {
+  return draftDefinitions.flatMap((definition) => {
+    const draft = readDraft<unknown>(definition.key);
+    return draft ? [{ key: definition.key, label: definition.label, updatedAt: draft.updatedAt }] : [];
+  });
 }
 
 function loadDailyRecords() {
@@ -266,6 +310,7 @@ function App() {
   const [loggingPlan, setLoggingPlan] = useState<SelfCarePlan | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(onboardingCompletedStorageKey) !== "true");
   const [onboardingMode, setOnboardingMode] = useState<"initial" | "guide">("initial");
+  const [activeFormDirty, setActiveFormDirty] = useState(false);
   const [flash, setFlash] = useState("");
 
   useEffect(() => {
@@ -317,6 +362,8 @@ function App() {
       : [record, ...dailyRecords];
     setDailyRecords(next);
     localStorage.setItem(dailyStorageKey, JSON.stringify(next));
+    localStorage.removeItem(dailyDraftKey);
+    setActiveFormDirty(false);
     setEditingDaily(null);
     setFlash(isEditing ? "日々の記録を更新しました" : "今日の記録を保存しました");
     setScreen(isEditing ? "records" : "home");
@@ -329,6 +376,8 @@ function App() {
       : [log, ...suddenLogs];
     setSuddenLogs(next);
     localStorage.setItem(suddenStorageKey, JSON.stringify(next));
+    localStorage.removeItem(suddenDraftKey);
+    setActiveFormDirty(false);
     setEditingSudden(null);
     setFlash(isEditing ? "突発ログを更新しました" : "突発ログを保存しました");
     setScreen(isEditing ? "records" : "home");
@@ -363,6 +412,8 @@ function App() {
     const next = isEditing ? consultationNotes.map((item) => (item.id === note.id ? note : item)) : [note, ...consultationNotes];
     setConsultationNotes(next);
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(next));
+    localStorage.removeItem(consultationDraftKey);
+    setActiveFormDirty(false);
     setFlash(isEditing ? "相談メモを更新しました" : "相談メモを保存しました");
   };
 
@@ -443,6 +494,18 @@ function App() {
     setFlash("");
     setEditingDaily(dailyRecords.find((record) => record.date === today()) || null);
     setScreen("daily");
+  };
+
+  const confirmNavigation = () => {
+    if (!activeFormDirty) return true;
+    return window.confirm("まだ保存していない内容があります。移動しますか？");
+  };
+
+  const moveToScreen = (nextScreen: Screen) => {
+    if (!confirmNavigation()) return;
+    setActiveFormDirty(false);
+    setFlash("");
+    setScreen(nextScreen);
   };
 
   const openSudden = () => {
@@ -538,8 +601,8 @@ function App() {
             onRecords={openRecords}
           />
         )}
-        {screen === "daily" && <DailyForm key={editingDaily?.id || "new-daily"} initial={editingDaily} onSave={saveDaily} onCancel={() => setScreen("home")} />}
-        {screen === "sudden" && <SuddenForm key={editingSudden?.id || "new-sudden"} initial={editingSudden} onSave={saveSudden} onCancel={() => setScreen("home")} />}
+        {screen === "daily" && <DailyForm key={editingDaily?.id || "new-daily"} initial={editingDaily} onSave={saveDaily} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
+        {screen === "sudden" && <SuddenForm key={editingSudden?.id || "new-sudden"} initial={editingSudden} onSave={saveSudden} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
         {screen === "records" && (
           <RecordsScreen
             dailyRecords={dailyRecords}
@@ -581,6 +644,7 @@ function App() {
             onSavePlan={saveSelfCarePlan}
             onDeletePlan={(id) => setPendingDelete({ kind: "selfcare", id })}
             onCareDone={setLoggingPlan}
+            onDirtyChange={setActiveFormDirty}
           />
         )}
         {screen === "consultation" && (
@@ -594,6 +658,7 @@ function App() {
             onDelete={(id) => setPendingDelete({ kind: "consultation", id })}
             onMarkDone={(id) => updateConsultationStatus(id, "done")}
             privateDisplayMode={privacySettings.privateDisplayMode}
+            onDirtyChange={setActiveFormDirty}
           />
         )}
         {screen === "privacy" && (
@@ -661,8 +726,7 @@ function App() {
             className={navGroup(screen) === id ? "active" : ""}
             key={id}
             onClick={() => {
-              setFlash("");
-            setScreen(id as Screen);
+              moveToScreen(id as Screen);
             }}
           >
             <span>{label}</span>
@@ -966,8 +1030,8 @@ function Home({
           <h2>{todayRecord ? "記録済み" : "まだ未記録"}</h2>
         </div>
         <div className="quick-grid">
-          <Metric label="気分" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? `${todayRecord.mood}/10` : "-"} />
-          <Metric label="不安" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? `${todayRecord.anxiety}/10` : "-"} />
+          <Metric label="気分" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatScore(todayRecord.mood) : "-"} />
+          <Metric label="不安" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatScore(todayRecord.anxiety) : "-"} />
           <Metric label="睡眠" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatSleepHours(todayRecord.sleepHours) : "-"} />
         </div>
       </section>
@@ -1224,6 +1288,7 @@ function DataManagement({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [drafts, setDrafts] = useState(() => listDrafts());
 
   const backup: BackupData = {
     app: {
@@ -1304,6 +1369,24 @@ function DataManagement({
     setMessage("相談メモCSVを作成しました。");
   };
 
+  const refreshDrafts = () => setDrafts(listDrafts());
+
+  const deleteDraft = (key: string) => {
+    if (!window.confirm("途中保存された下書きを削除します。保存済みの記録は削除されません。")) return;
+    removeDraft(key);
+    refreshDrafts();
+    setError("");
+    setMessage("下書きを削除しました。");
+  };
+
+  const deleteAllDrafts = () => {
+    if (!window.confirm("途中保存された下書きを削除します。保存済みの記録は削除されません。")) return;
+    draftDefinitions.forEach((draft) => removeDraft(draft.key));
+    refreshDrafts();
+    setError("");
+    setMessage("下書きをまとめて削除しました。");
+  };
+
   return (
     <section>
       <header className="page-head">
@@ -1353,6 +1436,27 @@ function DataManagement({
         </div>
       </section>
 
+      <section className="section-block data-card">
+        <h2>下書きの削除</h2>
+        <p className="soft-text">途中保存された下書きだけを削除できます。保存済みの記録はそのまま残ります。</p>
+        {drafts.length === 0 ? (
+          <p className="empty-box">保存中の下書きはありません。</p>
+        ) : (
+          <>
+            <div className="detail-list">
+              {drafts.map((draft) => (
+                <div className="detail-row" key={draft.key}>
+                  <span>{draft.label}</span>
+                  <strong>{formatDateTime(draft.updatedAt)}</strong>
+                  <button className="delete-action full-width" onClick={() => deleteDraft(draft.key)}>この下書きを削除</button>
+                </div>
+              ))}
+            </div>
+            <button className="delete-action full-width" onClick={deleteAllDrafts}>下書きをすべて削除</button>
+          </>
+        )}
+      </section>
+
       <section className="section-block data-card danger-zone">
         <h2>全データ削除</h2>
         <p className="soft-text">保存されている記録、マイプラン、セルフケア記録、相談メモをすべて削除します。先にバックアップを取ることをおすすめします。</p>
@@ -1369,6 +1473,7 @@ function SelfCareScreen({
   onSavePlan,
   onDeletePlan,
   onCareDone,
+  onDirtyChange,
 }: {
   plans: SelfCarePlan[];
   logs: SelfCareLog[];
@@ -1376,11 +1481,17 @@ function SelfCareScreen({
   onSavePlan: (plan: SelfCarePlan) => void;
   onDeletePlan: (id: string) => void;
   onCareDone: (plan: SelfCarePlan) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const [customTitle, setCustomTitle] = useState("");
   const [customCategory, setCustomCategory] = useState<SelfCareCategory>("体を整える");
   const [customMemo, setCustomMemo] = useState("");
   const [editingPlan, setEditingPlan] = useState<SelfCarePlan | null>(null);
+  const [customDirty, setCustomDirty] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [showRestore, setShowRestore] = useState(() => Boolean(readDraft<{ title: string; category: SelfCareCategory; memo: string }>(selfCareDraftKey)));
+  const [customMessage, setCustomMessage] = useState("");
+  const [isSavingCustom, setIsSavingCustom] = useState(false);
 
   const addPlan = (item: Pick<SelfCarePlan, "title" | "category" | "memo">) => {
     onSavePlan({
@@ -1395,7 +1506,12 @@ function SelfCareScreen({
 
   const saveCustom = () => {
     const title = customTitle.trim();
-    if (!title) return;
+    if (!title) {
+      setCustomMessage("保存するにはタイトルが必要です。短い名前で大丈夫です。");
+      return;
+    }
+    if (isSavingCustom) return;
+    setIsSavingCustom(true);
     onSavePlan({
       id: editingPlan?.id || newId(),
       title,
@@ -1408,6 +1524,68 @@ function SelfCareScreen({
     setCustomMemo("");
     setCustomCategory("体を整える");
     setEditingPlan(null);
+    removeDraft(selfCareDraftKey);
+    setCustomDirty(false);
+    setCustomMessage("");
+    setIsSavingCustom(false);
+  };
+
+  useEffect(() => {
+    onDirtyChange(customDirty);
+    return () => onDirtyChange(false);
+  }, [customDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!customDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [customDirty]);
+
+  useEffect(() => {
+    if (editingPlan || showRestore || !customDirty) return;
+    setDraftStatus("下書きを保存中です");
+    const timer = window.setTimeout(() => {
+      writeDraft(selfCareDraftKey, "selfcare", { title: customTitle, category: customCategory, memo: customMemo });
+      setDraftStatus("下書きを保存しました");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [customTitle, customCategory, customMemo, editingPlan, showRestore, customDirty]);
+
+  const updateCustomTitle = (value: string) => {
+    setCustomTitle(value);
+    setCustomDirty(true);
+    setCustomMessage("");
+  };
+
+  const updateCustomCategory = (value: SelfCareCategory) => {
+    setCustomCategory(value);
+    setCustomDirty(true);
+  };
+
+  const updateCustomMemo = (value: string) => {
+    setCustomMemo(value);
+    setCustomDirty(true);
+  };
+
+  const restoreDraft = () => {
+    const draft = readDraft<{ title: string; category: SelfCareCategory; memo: string }>(selfCareDraftKey);
+    if (draft) {
+      setCustomTitle(draft.data.title || "");
+      setCustomCategory(normalizeSelfCareCategory(draft.data.category));
+      setCustomMemo(draft.data.memo || "");
+      setCustomDirty(true);
+      setDraftStatus("下書きを再開しました");
+    }
+    setShowRestore(false);
+  };
+
+  const discardDraft = () => {
+    removeDraft(selfCareDraftKey);
+    setShowRestore(false);
+    setDraftStatus("");
   };
 
   const groupedCandidates = selfCareCategories.map((category) => ({
@@ -1450,6 +1628,8 @@ function SelfCareScreen({
                     setCustomTitle(plan.title);
                     setCustomCategory(plan.category);
                     setCustomMemo(plan.memo);
+                    setShowRestore(false);
+                    setCustomDirty(false);
                   }}
                 >
                   編集
@@ -1463,15 +1643,21 @@ function SelfCareScreen({
 
       <section className="section-block data-card">
         <h2>{editingPlan ? "マイプランを編集" : "カスタム項目を追加"}</h2>
+        {!editingPlan && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
+        {draftStatus && <p className="draft-status">{draftStatus}</p>}
+        {customMessage && <div className="error-message">{customMessage}</div>}
         <label className="field">
-          <span>タイトル</span>
-          <input value={customTitle} onChange={(event) => setCustomTitle(event.target.value)} placeholder="例: 5分だけ静かに座る" />
+          <span>タイトル <small>必要</small></span>
+          <input value={customTitle} onChange={(event) => updateCustomTitle(event.target.value)} placeholder="例: 5分だけ静かに座る" />
         </label>
-        <Choice label="カテゴリ" options={selfCareCategories} value={customCategory} onChange={(value) => setCustomCategory(value as SelfCareCategory)} />
-        <TextArea label="メモ" helper="自分向けの短いメモを書けます" value={customMemo} onChange={setCustomMemo} />
+        <Choice label="カテゴリ" options={selfCareCategories} value={customCategory} onChange={(value) => updateCustomCategory(value as SelfCareCategory)} />
+        <TextArea label="メモ" helper="任意。自分向けの短いメモを書けます" value={customMemo} onChange={updateCustomMemo} />
         <div className="data-actions">
-          <button className="primary-btn" onClick={saveCustom}>{editingPlan ? "更新する" : "追加する"}</button>
-          {editingPlan && <button className="secondary-btn no-margin" onClick={() => setEditingPlan(null)}>編集をやめる</button>}
+          <button className="primary-btn" disabled={isSavingCustom} onClick={saveCustom}>{isSavingCustom ? "保存しています" : editingPlan ? "更新する" : "追加する"}</button>
+          {editingPlan && <button className="secondary-btn no-margin" onClick={() => {
+            setEditingPlan(null);
+            setCustomDirty(false);
+          }}>編集をやめる</button>}
         </div>
       </section>
 
@@ -1560,6 +1746,7 @@ function ConsultationScreen({
   onDelete,
   onMarkDone,
   privateDisplayMode,
+  onDirtyChange,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -1570,6 +1757,7 @@ function ConsultationScreen({
   onDelete: (id: string) => void;
   onMarkDone: (id: string) => void;
   privateDisplayMode: boolean;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const [editing, setEditing] = useState<ConsultationNote | null>(null);
   const [detail, setDetail] = useState<ConsultationNote | null>(null);
@@ -1578,6 +1766,10 @@ function ConsultationScreen({
   const [copied, setCopied] = useState("");
   const blank = createConsultationDraft();
   const [form, setForm] = useState<ConsultationNote>(blank);
+  const [isDirty, setIsDirty] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [showRestore, setShowRestore] = useState(() => Boolean(readDraft<ConsultationNote>(consultationDraftKey)));
+  const [isSaving, setIsSaving] = useState(false);
   const sortedNotes = [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const prepSummary = buildConsultationSummary(period, dailyRecords, suddenLogs, selfCareLogs, notes);
   const aiText = buildConsultationAiPrompt(prepSummary);
@@ -1585,6 +1777,8 @@ function ConsultationScreen({
   const startEdit = (note: ConsultationNote) => {
     setEditing(note);
     setForm(note);
+    setIsDirty(false);
+    setShowRestore(false);
     setMessage("");
   };
 
@@ -1592,10 +1786,59 @@ function ConsultationScreen({
     const next = createConsultationDraft();
     setEditing(null);
     setForm(next);
+    setIsDirty(false);
+    setIsSaving(false);
+  };
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (editing || showRestore || !isDirty) return;
+    setDraftStatus("下書きを保存中です");
+    const timer = window.setTimeout(() => {
+      writeDraft(consultationDraftKey, "consultation", form);
+      setDraftStatus("下書きを保存しました");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, editing, showRestore, isDirty]);
+
+  const updateForm = (next: ConsultationNote) => {
+    setForm(next);
+    setIsDirty(true);
+  };
+
+  const restoreDraft = () => {
+    const draft = readDraft<ConsultationNote>(consultationDraftKey);
+    if (draft) {
+      setForm(normalizeConsultationNote(draft.data));
+      setIsDirty(true);
+      setDraftStatus("下書きを再開しました");
+    }
+    setShowRestore(false);
+  };
+
+  const discardDraft = () => {
+    removeDraft(consultationDraftKey);
+    setShowRestore(false);
+    setDraftStatus("");
   };
 
   const saveForm = () => {
-    const title = form.title.trim() || "相談メモ";
+    if (isSaving) return;
+    setIsSaving(true);
+    const title = form.title.trim() || "無題の相談メモ";
     onSave({ ...form, title, updatedAt: nowIso(), createdAt: form.createdAt || nowIso() });
     resetForm();
   };
@@ -1621,27 +1864,29 @@ function ConsultationScreen({
 
       <section className="section-block data-card">
         <h2>{editing ? "相談メモを編集" : "相談メモを作る"}</h2>
+        {!editing && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
+        {draftStatus && <p className="draft-status">{draftStatus}</p>}
         <label className="field">
-          <span>タイトル</span>
-          <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="例: 次回相談で話したいこと" />
+          <span>タイトル <small>任意</small></span>
+          <input value={form.title} onChange={(event) => updateForm({ ...form, title: event.target.value })} placeholder="空欄なら無題の相談メモになります" />
         </label>
-        <Choice label="相談先の種類" options={consultationTargets.map(targetLabel)} value={targetLabel(form.target)} onChange={(value) => setForm({ ...form, target: targetFromLabel(value) })} />
-        <Choice label="ステータス" options={consultationStatuses.map(statusLabel)} value={statusLabel(form.status)} onChange={(value) => setForm({ ...form, status: statusFromLabel(value) })} />
+        <Choice label="相談先の種類" options={consultationTargets.map(targetLabel)} value={targetLabel(form.target)} onChange={(value) => updateForm({ ...form, target: targetFromLabel(value) })} />
+        <Choice label="ステータス" options={consultationStatuses.map(statusLabel)} value={statusLabel(form.status)} onChange={(value) => updateForm({ ...form, status: statusFromLabel(value) })} />
         <FormSection title="相談したい内容">
-          <TextArea label="相談したいこと" value={form.mainTopic} onChange={(value) => setForm({ ...form, mainTopic: value })} />
-          <TextArea label="最近気になっていること" value={form.recentConcern} onChange={(value) => setForm({ ...form, recentConcern: value })} />
-          <TextArea label="状態の波が大きかった場面" value={form.waveMemo} onChange={(value) => setForm({ ...form, waveMemo: value })} />
+          <TextArea label="相談したいこと" helper="任意。あとから編集できます" value={form.mainTopic} onChange={(value) => updateForm({ ...form, mainTopic: value })} />
+          <TextArea label="最近気になっていること" helper="任意" value={form.recentConcern} onChange={(value) => updateForm({ ...form, recentConcern: value })} />
+          <TextArea label="状態の波が大きかった場面" helper="任意" value={form.waveMemo} onChange={(value) => updateForm({ ...form, waveMemo: value })} />
         </FormSection>
         <FormSection title="補足メモ">
-          <TextArea label="生活面で気になっていること" value={form.lifestyleMemo} onChange={(value) => setForm({ ...form, lifestyleMemo: value })} />
-          <TextArea label="話し忘れたくないこと" value={form.dontForgetMemo} onChange={(value) => setForm({ ...form, dontForgetMemo: value })} />
+          <TextArea label="生活面で気になっていること" helper="任意" value={form.lifestyleMemo} onChange={(value) => updateForm({ ...form, lifestyleMemo: value })} />
+          <TextArea label="話し忘れたくないこと" helper="任意" value={form.dontForgetMemo} onChange={(value) => updateForm({ ...form, dontForgetMemo: value })} />
           <label className="check-row">
-            <input type="checkbox" checked={form.includeInReport} onChange={(event) => setForm({ ...form, includeInReport: event.target.checked })} />
+            <input type="checkbox" checked={form.includeInReport} onChange={(event) => updateForm({ ...form, includeInReport: event.target.checked })} />
             <span>レポートに含める</span>
           </label>
         </FormSection>
         <div className="data-actions">
-          <button className="primary-btn" onClick={saveForm}>{editing ? "更新する" : "保存する"}</button>
+          <button className="primary-btn" disabled={isSaving} onClick={saveForm}>{isSaving ? "保存しています" : editing ? "更新する" : "保存する"}</button>
           {editing && <button className="secondary-btn no-margin" onClick={resetForm}>編集をやめる</button>}
         </div>
       </section>
@@ -1811,10 +2056,10 @@ function RecordsScreen({
                 <span className="badge">{record.weather}</span>
               </div>
               <div className="compact-metrics">
-                <Metric label="気分" value={privateDisplayMode ? "記録あり" : `${record.mood}/10`} />
-                <Metric label="不安" value={privateDisplayMode ? "記録あり" : `${record.anxiety}/10`} />
-                <Metric label="イライラ" value={privateDisplayMode ? "記録あり" : `${record.irritability}/10`} />
-                <Metric label="疲労" value={privateDisplayMode ? "記録あり" : `${record.fatigue}/10`} />
+                <Metric label="気分" value={privateDisplayMode ? "記録あり" : formatScore(record.mood)} />
+                <Metric label="不安" value={privateDisplayMode ? "記録あり" : formatScore(record.anxiety)} />
+                <Metric label="イライラ" value={privateDisplayMode ? "記録あり" : formatScore(record.irritability)} />
+                <Metric label="疲労" value={privateDisplayMode ? "記録あり" : formatScore(record.fatigue)} />
                 <Metric label="睡眠" value={privateDisplayMode ? "記録あり" : formatSleepHours(record.sleepHours)} />
               </div>
               <p className="record-snippet"><strong>出来事:</strong> {privateDisplayMode ? "メモは非表示です" : shortText(record.events)}</p>
@@ -1843,7 +2088,7 @@ function RecordsScreen({
               </div>
               <TagList tags={log.stateTags} empty="状態タグなし" />
               <div className="compact-metrics">
-                <Metric label="強さ" value={privateDisplayMode ? "記録あり" : `${log.intensity}/10`} />
+                <Metric label="強さ" value={privateDisplayMode ? "記録あり" : formatScore(log.intensity)} />
                 <Metric label="場所" value={log.place} />
                 <Metric label="変化" value={log.afterChange} />
               </div>
@@ -1862,15 +2107,25 @@ function RecordsScreen({
   );
 }
 
-function DailyForm({ initial, onSave, onCancel }: { initial: DailyRecord | null; onSave: (record: DailyRecord) => void; onCancel: () => void }) {
+function DailyForm({
+  initial,
+  onSave,
+  onCancel,
+  onDirtyChange,
+}: {
+  initial: DailyRecord | null;
+  onSave: (record: DailyRecord) => void;
+  onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
   const [form, setForm] = useState<DailyRecord>(
     initial || {
       id: newId(),
       date: today(),
-      mood: 5,
-      anxiety: 5,
-      irritability: 5,
-      fatigue: 5,
+      mood: null,
+      anxiety: null,
+      irritability: null,
+      fatigue: null,
       sleepHours: null,
       sleepQuality: "普通",
       weather: "晴れ",
@@ -1886,25 +2141,83 @@ function DailyForm({ initial, onSave, onCancel }: { initial: DailyRecord | null;
     },
   );
   const [sleepHoursInput, setSleepHoursInput] = useState(initial?.sleepHours == null ? "" : String(initial.sleepHours));
+  const [isDirty, setIsDirty] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [showRestore, setShowRestore] = useState(() => !initial && Boolean(readDraft<{ form: DailyRecord; sleepHoursInput: string }>(dailyDraftKey)));
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (initial || showRestore || !isDirty) return;
+    setDraftStatus("下書きを保存中です");
+    const timer = window.setTimeout(() => {
+      writeDraft(dailyDraftKey, "daily", { form, sleepHoursInput });
+      setDraftStatus("下書きを保存しました");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, sleepHoursInput, initial, showRestore, isDirty]);
+
+  const updateForm = (next: DailyRecord) => {
+    setForm(next);
+    setIsDirty(true);
+  };
+
+  const restoreDraft = () => {
+    const draft = readDraft<{ form: DailyRecord; sleepHoursInput: string }>(dailyDraftKey);
+    if (draft) {
+      setForm(normalizeDailyRecord(draft.data.form));
+      setSleepHoursInput(draft.data.sleepHoursInput || "");
+      setIsDirty(true);
+      setDraftStatus("下書きを再開しました");
+    }
+    setShowRestore(false);
+  };
+
+  const discardDraft = () => {
+    removeDraft(dailyDraftKey);
+    setShowRestore(false);
+    setDraftStatus("");
+  };
+
+  const save = () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    onSave({ ...form, sleepHours: parseSleepHoursInput(sleepHoursInput), updatedAt: nowIso() });
+  };
 
   return (
     <section>
       <FormHead title={initial ? "記録を編集中" : "今日の記録"} sub="その日全体の状態を記録します" onCancel={onCancel} />
+      {!initial && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
+      {draftStatus && <p className="draft-status">{draftStatus}</p>}
       <div className="form-card">
         <FormSection title="基本スコア">
           <label className="field">
-            <span>記録日</span>
-            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} />
+            <span>記録日 <small>必須</small></span>
+            <input type="date" value={form.date} onChange={(event) => updateForm({ ...form, date: event.target.value })} />
           </label>
-          <ScoreField label="気分" value={form.mood} onChange={(mood) => setForm({ ...form, mood })} />
-          <ScoreField label="不安度" value={form.anxiety} onChange={(anxiety) => setForm({ ...form, anxiety })} />
-          <ScoreField label="イライラ度" value={form.irritability} onChange={(irritability) => setForm({ ...form, irritability })} />
-          <ScoreField label="疲労度" value={form.fatigue} onChange={(fatigue) => setForm({ ...form, fatigue })} />
+          <ScoreField label="気分" value={form.mood} onChange={(mood) => updateForm({ ...form, mood })} />
+          <ScoreField label="不安度" value={form.anxiety} onChange={(anxiety) => updateForm({ ...form, anxiety })} />
+          <ScoreField label="イライラ度" value={form.irritability} onChange={(irritability) => updateForm({ ...form, irritability })} />
+          <ScoreField label="疲労度" value={form.fatigue} onChange={(fatigue) => updateForm({ ...form, fatigue })} />
         </FormSection>
 
         <FormSection title="睡眠と生活">
           <label className="field">
-            <span>睡眠時間</span>
+            <span>睡眠時間 <small>任意</small></span>
             <input
               type="number"
               inputMode="decimal"
@@ -1913,35 +2226,48 @@ function DailyForm({ initial, onSave, onCancel }: { initial: DailyRecord | null;
               step="0.5"
               value={sleepHoursInput}
               placeholder="例：6.5"
-              onChange={(event) => setSleepHoursInput(event.target.value)}
+              onChange={(event) => {
+                setSleepHoursInput(event.target.value);
+                setIsDirty(true);
+              }}
             />
           </label>
-          <Choice label="睡眠の質" options={["良い", "普通", "悪い"]} value={form.sleepQuality} onChange={(sleepQuality) => setForm({ ...form, sleepQuality: sleepQuality as SleepQuality })} />
-          <Choice label="天気" options={["晴れ", "曇り", "雨", "雪", "その他"]} value={form.weather} onChange={(weather) => setForm({ ...form, weather: weather as DailyChoice })} />
-          <Choice label="食事" options={["しっかり食べた", "普通", "少ない", "食べていない"]} value={form.meal} onChange={(meal) => setForm({ ...form, meal: meal as DailyRecord["meal"] })} />
-          <Choice label="運動" options={["なし", "散歩", "軽い運動", "筋トレ", "その他"]} value={form.exercise} onChange={(exercise) => setForm({ ...form, exercise: exercise as DailyRecord["exercise"] })} />
-          <Choice label="外出" options={["あり", "なし"]} value={form.wentOut} onChange={(wentOut) => setForm({ ...form, wentOut: wentOut as DailyRecord["wentOut"] })} />
-          <Choice label="人との接触" options={["多い", "普通", "少ない", "なし"]} value={form.socialContact} onChange={(socialContact) => setForm({ ...form, socialContact: socialContact as DailyRecord["socialContact"] })} />
-          <Choice label="薬・サプリ" options={["飲んだ", "飲んでいない", "該当なし"]} value={form.medicine} onChange={(medicine) => setForm({ ...form, medicine: medicine as DailyRecord["medicine"] })} />
+          <Choice label="睡眠の質" options={["良い", "普通", "悪い"]} value={form.sleepQuality} onChange={(sleepQuality) => updateForm({ ...form, sleepQuality: sleepQuality as SleepQuality })} />
+          <Choice label="天気" options={["晴れ", "曇り", "雨", "雪", "その他"]} value={form.weather} onChange={(weather) => updateForm({ ...form, weather: weather as DailyChoice })} />
+          <Choice label="食事" options={["しっかり食べた", "普通", "少ない", "食べていない"]} value={form.meal} onChange={(meal) => updateForm({ ...form, meal: meal as DailyRecord["meal"] })} />
+          <Choice label="運動" options={["なし", "散歩", "軽い運動", "筋トレ", "その他"]} value={form.exercise} onChange={(exercise) => updateForm({ ...form, exercise: exercise as DailyRecord["exercise"] })} />
+          <Choice label="外出" options={["あり", "なし"]} value={form.wentOut} onChange={(wentOut) => updateForm({ ...form, wentOut: wentOut as DailyRecord["wentOut"] })} />
+          <Choice label="人との接触" options={["多い", "普通", "少ない", "なし"]} value={form.socialContact} onChange={(socialContact) => updateForm({ ...form, socialContact: socialContact as DailyRecord["socialContact"] })} />
+          <Choice label="薬・サプリ" options={["飲んだ", "飲んでいない", "該当なし"]} value={form.medicine} onChange={(medicine) => updateForm({ ...form, medicine: medicine as DailyRecord["medicine"] })} />
         </FormSection>
 
         <FormSection title="できごと・メモ">
-          <TextArea label="今日の主な出来事" value={form.events} onChange={(events) => setForm({ ...form, events })} />
-          <TextArea label="今日のメモ" value={form.memo} onChange={(memo) => setForm({ ...form, memo })} />
+          <TextArea label="今日の主な出来事" helper="任意。あとから編集できます" value={form.events} onChange={(events) => updateForm({ ...form, events })} />
+          <TextArea label="今日のメモ" helper="任意。短くても空欄でも大丈夫です" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} />
         </FormSection>
       </div>
-      <button className="primary-btn sticky-save" onClick={() => onSave({ ...form, sleepHours: parseSleepHoursInput(sleepHoursInput), updatedAt: nowIso() })}>保存する</button>
+      <button className="primary-btn sticky-save" disabled={isSaving} onClick={save}>{isSaving ? "保存しています" : "保存する"}</button>
     </section>
   );
 }
 
-function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; onSave: (log: SuddenLog) => void; onCancel: () => void }) {
+function SuddenForm({
+  initial,
+  onSave,
+  onCancel,
+  onDirtyChange,
+}: {
+  initial: SuddenLog | null;
+  onSave: (log: SuddenLog) => void;
+  onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
   const [form, setForm] = useState<SuddenLog>(
     initial || {
       id: newId(),
       occurredAt: nowIso(),
       stateTags: [],
-      intensity: 5,
+      intensity: null,
       triggers: [],
       place: "自宅",
       symptoms: [],
@@ -1953,39 +2279,96 @@ function SuddenForm({ initial, onSave, onCancel }: { initial: SuddenLog | null; 
       updatedAt: nowIso(),
     },
   );
+  const [isDirty, setIsDirty] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [showRestore, setShowRestore] = useState(() => !initial && Boolean(readDraft<SuddenLog>(suddenDraftKey)));
+  const [isSaving, setIsSaving] = useState(false);
   const showSupport = form.stateTags.some((tag) => supportTags.includes(tag)) || supportWords.some((word) => `${form.memo} ${form.thoughts}`.includes(word));
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (initial || showRestore || !isDirty) return;
+    setDraftStatus("下書きを保存中です");
+    const timer = window.setTimeout(() => {
+      writeDraft(suddenDraftKey, "sudden", form);
+      setDraftStatus("下書きを保存しました");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, initial, showRestore, isDirty]);
+
+  const updateForm = (next: SuddenLog) => {
+    setForm(next);
+    setIsDirty(true);
+  };
+
+  const restoreDraft = () => {
+    const draft = readDraft<SuddenLog>(suddenDraftKey);
+    if (draft) {
+      setForm(normalizeSuddenLog(draft.data));
+      setIsDirty(true);
+      setDraftStatus("下書きを再開しました");
+    }
+    setShowRestore(false);
+  };
+
+  const discardDraft = () => {
+    removeDraft(suddenDraftKey);
+    setShowRestore(false);
+    setDraftStatus("");
+  };
+
+  const save = () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    onSave({ ...form, updatedAt: nowIso() });
+  };
 
   return (
     <section>
       <FormHead title={initial ? "突発ログを編集中" : "突発ログ"} sub="急な状態の変化を短く記録します" onCancel={onCancel} />
+      {!initial && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
+      {draftStatus && <p className="draft-status">{draftStatus}</p>}
       {showSupport && <SupportNotice />}
       <div className="form-card">
         <FormSection title="まず記録">
           <label className="field">
-            <span>発生日時</span>
-            <input type="datetime-local" value={toDateTimeLocal(form.occurredAt)} onChange={(event) => setForm({ ...form, occurredAt: new Date(event.target.value).toISOString() })} />
+            <span>発生日時 <small>自動</small></span>
+            <input type="datetime-local" value={toDateTimeLocal(form.occurredAt)} onChange={(event) => updateForm({ ...form, occurredAt: new Date(event.target.value).toISOString() })} />
           </label>
-          <MultiChoice label="状態タグ" options={stateTagOptions} values={form.stateTags} onChange={(stateTags) => setForm({ ...form, stateTags })} />
-          <ScoreField label="強さ" value={form.intensity} onChange={(intensity) => setForm({ ...form, intensity })} />
+          <MultiChoice label="状態タグ" options={stateTagOptions} values={form.stateTags} onChange={(stateTags) => updateForm({ ...form, stateTags })} />
+          <ScoreField label="強さ" value={form.intensity} onChange={(intensity) => updateForm({ ...form, intensity })} />
         </FormSection>
 
         <FormSection title="状況">
-          <MultiChoice label="直前にあったこと" options={triggerOptions} values={form.triggers} onChange={(triggers) => setForm({ ...form, triggers })} />
-          <Choice label="場所" options={placeOptions} value={form.place} onChange={(place) => setForm({ ...form, place })} />
-          <MultiChoice label="身体のサイン" options={symptomOptions} values={form.symptoms} onChange={(symptoms) => setForm({ ...form, symptoms })} />
-          <TextArea label="頭に浮かんだ言葉・思考" value={form.thoughts} onChange={(thoughts) => setForm({ ...form, thoughts })} />
+          <MultiChoice label="直前にあったこと" options={triggerOptions} values={form.triggers} onChange={(triggers) => updateForm({ ...form, triggers })} />
+          <Choice label="場所" options={placeOptions} value={form.place} onChange={(place) => updateForm({ ...form, place })} />
+          <MultiChoice label="身体のサイン" options={symptomOptions} values={form.symptoms} onChange={(symptoms) => updateForm({ ...form, symptoms })} />
+          <TextArea label="頭に浮かんだ言葉・思考" helper="任意。書ける範囲で大丈夫です" value={form.thoughts} onChange={(thoughts) => updateForm({ ...form, thoughts })} />
         </FormSection>
 
         <FormSection title="対処">
-          <MultiChoice label="実際に取った行動" options={actionOptions} values={form.actions} onChange={(actions) => setForm({ ...form, actions })} />
-          <Choice label="対処後の変化" options={["変わらない", "少し落ち着いた", "かなり落ち着いた", "落ち着かなかった"]} value={form.afterChange} onChange={(afterChange) => setForm({ ...form, afterChange: afterChange as SuddenLog["afterChange"] })} />
+          <MultiChoice label="実際に取った行動" options={actionOptions} values={form.actions} onChange={(actions) => updateForm({ ...form, actions })} />
+          <Choice label="対処後の変化" options={["変わらない", "少し落ち着いた", "かなり落ち着いた", "落ち着かなかった"]} value={form.afterChange} onChange={(afterChange) => updateForm({ ...form, afterChange: afterChange as SuddenLog["afterChange"] })} />
         </FormSection>
 
         <FormSection title="任意メモ">
-          <TextArea label="メモ" helper="書けるときだけで大丈夫です" value={form.memo} onChange={(memo) => setForm({ ...form, memo })} />
+          <TextArea label="メモ" helper="書けるときだけで大丈夫です" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} />
         </FormSection>
       </div>
-      <button className="urgent-btn sticky-save" onClick={() => onSave({ ...form, updatedAt: nowIso() })}>突発ログを保存</button>
+      <button className="urgent-btn sticky-save" disabled={isSaving} onClick={save}>{isSaving ? "保存しています" : "突発ログを保存"}</button>
     </section>
   );
 }
@@ -2119,7 +2502,7 @@ function Report({
   const topTriggers = countFlat(sudden.flatMap((log) => log.triggers)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topSymptoms = countFlat(sudden.flatMap((log) => log.symptoms)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topActions = countFlat(sudden.filter((log) => log.afterChange.includes("落ち着いた")).flatMap((log) => log.actions)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
-  const waveDays = daily.filter((record) => record.mood <= 3 || record.anxiety >= 8 || record.fatigue >= 8).map((record) => record.date).join("、") || "目立つ記録なし";
+  const waveDays = daily.filter(hasLargeWaveScore).map((record) => record.date).join("、") || "目立つ記録なし";
   const topCare = countBy(careInPeriod, (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const settledCare = countBy(careInPeriod.filter((log) => log.result === "少し整った"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const notFitCare = countBy(careInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
@@ -2213,7 +2596,7 @@ function History({ title, records, onEdit, onDelete }: { title: string; records:
         <article className="history-item" key={record.id}>
           <div>
             <strong>{record.date}</strong>
-            <p>気分 {record.mood}/10 ・ 不安 {record.anxiety}/10 ・ 睡眠 {formatSleepHours(record.sleepHours)}</p>
+            <p>気分 {formatScore(record.mood)} ・ 不安 {formatScore(record.anxiety)} ・ 睡眠 {formatSleepHours(record.sleepHours)}</p>
           </div>
           <div className="row-actions">
             <button onClick={() => onEdit(record)}>編集</button>
@@ -2233,7 +2616,7 @@ function SuddenHistory({ records, onEdit, onDelete }: { records: SuddenLog[]; on
         <article className="history-item" key={record.id}>
           <div>
             <strong>{new Date(record.occurredAt).toLocaleString("ja-JP")}</strong>
-            <p>{joinTags(record.stateTags)} ・ 強さ {record.intensity}/10</p>
+            <p>{joinTags(record.stateTags)} ・ 強さ {formatScore(record.intensity)}</p>
           </div>
           <div className="row-actions">
             <button onClick={() => onEdit(record)}>編集</button>
@@ -2250,10 +2633,10 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
     item.kind === "daily"
       ? [
           ["記録日", item.record.date],
-          ["気分", `${item.record.mood}/10`],
-          ["不安度", `${item.record.anxiety}/10`],
-          ["イライラ度", `${item.record.irritability}/10`],
-          ["疲労度", `${item.record.fatigue}/10`],
+          ["気分", formatScore(item.record.mood)],
+          ["不安度", formatScore(item.record.anxiety)],
+          ["イライラ度", formatScore(item.record.irritability)],
+          ["疲労度", formatScore(item.record.fatigue)],
           ["睡眠時間", formatSleepHours(item.record.sleepHours)],
           ["睡眠の質", item.record.sleepQuality],
           ["天気", item.record.weather],
@@ -2268,7 +2651,7 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
       : [
           ["発生日時", formatDateTime(item.record.occurredAt)],
           ["状態タグ", joinTags(item.record.stateTags)],
-          ["強さ", `${item.record.intensity}/10`],
+          ["強さ", formatScore(item.record.intensity)],
           ["きっかけ", item.record.triggers.join("、") || "未記入"],
           ["場所", item.record.place],
           ["身体のサイン", item.record.symptoms.join("、") || "未記入"],
@@ -2331,6 +2714,21 @@ function ConfirmImportModal({ onCancel, onConfirm }: { onCancel: () => void; onC
   );
 }
 
+function DraftRestoreNotice({ onRestore, onDiscard }: { onRestore: () => void; onDiscard: () => void }) {
+  return (
+    <div className="draft-restore">
+      <div>
+        <strong>途中まで入力した内容があります。</strong>
+        <p>再開するか、下書きだけ破棄できます。本文はここには表示しません。</p>
+      </div>
+      <div className="confirm-actions">
+        <button className="secondary-action" onClick={onDiscard}>破棄する</button>
+        <button className="primary-btn" onClick={onRestore}>再開する</button>
+      </div>
+    </div>
+  );
+}
+
 function FormHead({ title, sub, onCancel }: { title: string; sub: string; onCancel: () => void }) {
   return (
     <header className="page-head form-head">
@@ -2361,14 +2759,17 @@ function FormSection({ title, children }: { title: string; children: React.React
   );
 }
 
-function ScoreField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+function ScoreField({ label, value, onChange }: { label: string; value: number | null; onChange: (value: number | null) => void }) {
   return (
     <div className="field">
       <div className="score-head">
-        <span>{label}</span>
-        <strong>{value}/10</strong>
+        <span>{label} <small>任意</small></span>
+        <strong>{formatScore(value)}</strong>
       </div>
       <div className="score-grid">
+        <button className={value === null ? "score-button selected" : "score-button"} onClick={() => onChange(null)} type="button">
+          未入力
+        </button>
         {Array.from({ length: 10 }, (_, index) => index + 1).map((score) => (
           <button className={value === score ? "score-button selected" : "score-button"} key={score} onClick={() => onChange(score)} type="button">
             {score}
@@ -2447,16 +2848,19 @@ function EmptyState({ text }: { text: string }) {
   return <p className="empty empty-box">{text}</p>;
 }
 
-function MiniTrend({ title, values, labels, max = 10 }: { title: string; values: number[]; labels: string[]; max?: number }) {
+function MiniTrend({ title, values, labels, max = 10 }: { title: string; values: Array<number | null | undefined>; labels: string[]; max?: number }) {
+  const points = values
+    .map((value, index) => ({ value, label: labels[index] }))
+    .filter((point): point is { value: number; label: string } => isFiniteNumber(point.value));
   return (
     <div className="trend">
       <h3>{title}</h3>
       <div className="bars">
-        {values.length === 0 && <p className="empty">記録がまだありません</p>}
-        {values.map((value, index) => (
-          <div className="bar-wrap" key={`${labels[index]}-${index}`}>
-            <div className="bar" style={{ height: `${Math.max(8, (value / max) * 100)}%` }} />
-            <small>{labels[index]}</small>
+        {points.length === 0 && <p className="empty">記録がまだありません</p>}
+        {points.map((point, index) => (
+          <div className="bar-wrap" key={`${point.label}-${index}`}>
+            <div className="bar" style={{ height: `${Math.max(8, (point.value / max) * 100)}%` }} />
+            <small>{point.label}</small>
           </div>
         ))}
       </div>
@@ -2497,10 +2901,18 @@ function InsightCard({ insight }: { insight: Insight }) {
   );
 }
 
-function formatAverage(values: number[]) {
-  const valid = values.filter((value) => Number.isFinite(value));
+function formatAverage(values: Array<number | null | undefined>) {
+  const valid = values.filter(isFiniteNumber);
   if (!valid.length) return "-";
   return (valid.reduce((sum, value) => sum + value, 0) / valid.length).toFixed(1);
+}
+
+function formatScore(value: number | null | undefined) {
+  return isFiniteNumber(value) ? `${value}/10` : "未入力";
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function validSleepHours(records: DailyRecord[]) {
@@ -2513,6 +2925,12 @@ function formatSleepHours(value: number | null | undefined) {
 
 function hasSleepHours(record: DailyRecord) {
   return typeof record.sleepHours === "number" && Number.isFinite(record.sleepHours);
+}
+
+function hasLargeWaveScore(record: DailyRecord) {
+  return (isFiniteNumber(record.mood) && record.mood <= 3)
+    || (isFiniteNumber(record.anxiety) && record.anxiety >= 8)
+    || (isFiniteNumber(record.fatigue) && record.fatigue >= 8);
 }
 
 function parseSleepHoursInput(value: string) {
@@ -2543,8 +2961,8 @@ function countFlat(items: string[]): [string, number][] {
   return [...map.entries()].sort((a, b) => b[1] - a[1]);
 }
 
-function groupedAverage<T>(items: T[], keyer: (item: T) => string, valuer: (item: T) => number): [string, string][] {
-  const groups = new Map<string, number[]>();
+function groupedAverage<T>(items: T[], keyer: (item: T) => string, valuer: (item: T) => number | null | undefined): [string, string][] {
+  const groups = new Map<string, Array<number | null | undefined>>();
   items.forEach((item) => {
     const key = keyer(item);
     groups.set(key, [...(groups.get(key) || []), valuer(item)]);
@@ -2812,8 +3230,8 @@ function groupItems<T>(items: T[], keyer: (item: T) => string) {
   return groups;
 }
 
-function average(values: number[]) {
-  const valid = values.filter((value) => Number.isFinite(value));
+function average(values: Array<number | null | undefined>) {
+  const valid = values.filter(isFiniteNumber);
   if (!valid.length) return 0;
   return valid.reduce((sum, value) => sum + value, 0) / valid.length;
 }
@@ -2852,7 +3270,7 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
   const care = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
   const insights = calculateInsights(daily, sudden, care);
-  const waveDays = daily.filter((record) => record.mood <= 3 || record.anxiety >= 8 || record.fatigue >= 8).map((record) => record.date).join("、") || "目立つ記録なし";
+  const waveDays = daily.filter(hasLargeWaveScore).map((record) => record.date).join("、") || "目立つ記録なし";
   const topTags = countFlat(sudden.flatMap((log) => log.stateTags)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topTriggers = countFlat(sudden.flatMap((log) => log.triggers)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topSymptoms = countFlat(sudden.flatMap((log) => log.symptoms)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
@@ -3152,7 +3570,7 @@ function toConsultationCsv(notes: ConsultationNote[]) {
   return `\uFEFF${rows.map(csvRow).join("\n")}`;
 }
 
-function csvRow(values: Array<string | number>) {
+function csvRow(values: Array<string | number | null>) {
   return values.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",");
 }
 
@@ -3161,10 +3579,10 @@ function normalizeDailyRecord(record: Partial<DailyRecord>): DailyRecord {
   return {
     id: record.id || newId(),
     date: record.date || today(),
-    mood: record.mood ?? 5,
-    anxiety: record.anxiety ?? 5,
-    irritability: record.irritability ?? 5,
-    fatigue: record.fatigue ?? 5,
+    mood: normalizeScore(record.mood),
+    anxiety: normalizeScore(record.anxiety),
+    irritability: normalizeScore(record.irritability),
+    fatigue: normalizeScore(record.fatigue),
     sleepHours: typeof record.sleepHours === "number" && Number.isFinite(record.sleepHours) ? record.sleepHours : null,
     sleepQuality: record.sleepQuality || "普通",
     weather: record.weather || "その他",
@@ -3188,7 +3606,7 @@ function normalizeSuddenLog(log: Partial<SuddenLog>): SuddenLog {
     occurredAt: log.occurredAt || nowIso(),
     stateTags,
     stateType: log.stateType,
-    intensity: log.intensity ?? 5,
+    intensity: normalizeScore(log.intensity),
     riskLevel: log.riskLevel,
     triggers: log.triggers || [],
     place: log.place || "自宅",
@@ -3251,6 +3669,11 @@ function normalizeSelfCareCategory(category?: string): SelfCareCategory {
 function normalizeSelfCareResult(result?: string): SelfCareResult {
   const options: SelfCareResult[] = ["少し整った", "変化は少なめ", "今は合わなかった", "後で振り返る"];
   return options.includes(result as SelfCareResult) ? (result as SelfCareResult) : "後で振り返る";
+}
+
+function normalizeScore(value: unknown) {
+  if (!isFiniteNumber(value)) return null;
+  return Math.min(10, Math.max(1, Math.round(value)));
 }
 
 function normalizeStateTags(tags?: string[], legacyState?: string) {
