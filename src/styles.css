@@ -337,6 +337,11 @@ h3 {
   padding: 15px;
 }
 
+.reminder-card {
+  background: #eef5f1;
+  border-color: rgba(47, 102, 88, 0.18);
+}
+
 .soft-text,
 .empty {
   color: #60726b;

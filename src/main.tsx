@@ -103,6 +103,24 @@ type BackupPrivacySettings = {
   updatedAt: string;
 };
 
+type ReminderTimeType = "朝" | "昼" | "夕方" | "夜" | "自由入力";
+type WeeklyGoalType = "週に1回" | "週に3回" | "できる日に記録する" | "カスタム";
+
+type HabitSettings = {
+  enabled: boolean;
+  reminderTimeType: ReminderTimeType;
+  customReminderTime: string;
+  reminderMessage: string;
+  weeklyGoalType: WeeklyGoalType;
+  customWeeklyGoal: number;
+  updatedAt: string;
+};
+
+type ReminderDismissal = {
+  date: string;
+  dismissedAt: string;
+};
+
 type Insight = {
   id: string;
   title: string;
@@ -113,7 +131,7 @@ type Insight = {
   group: "daily" | "sudden" | "selfcare";
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "all" };
@@ -129,6 +147,8 @@ type BackupData = {
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
   privacySettings: BackupPrivacySettings;
+  habitSettings: HabitSettings;
+  reminderDismissals: ReminderDismissal[];
 };
 
 type DraftEnvelope<T> = {
@@ -149,6 +169,8 @@ const dailyDraftKey = "dailyRecordDraft";
 const suddenDraftKey = "suddenLogDraft";
 const consultationDraftKey = "consultationNoteDraft";
 const selfCareDraftKey = "selfCareDraft";
+const habitSettingsStorageKey = "habitSettings";
+const reminderDismissalsStorageKey = "reminderDismissals";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -165,6 +187,13 @@ const supportWords = ["死にたい", "消えたい", "自傷", "薬を大量に
 const consultationTargets: ConsultationTarget[] = ["doctor", "counselor", "family", "partner", "friend", "ai", "other"];
 const consultationStatuses: ConsultationStatus[] = ["draft", "planned", "done", "pending"];
 const selfCareCategories: SelfCareCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "習慣を見直す"];
+const reminderTimeTypes: ReminderTimeType[] = ["朝", "昼", "夕方", "夜", "自由入力"];
+const weeklyGoalTypes: WeeklyGoalType[] = ["週に1回", "週に3回", "できる日に記録する", "カスタム"];
+const defaultReminderMessages = [
+  "今日の状態を少しだけ記録してみませんか？",
+  "全部入力しなくても大丈夫です",
+  "今の自分を短く残しておけます",
+];
 const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo">> = [
   { title: "朝の光を浴びる", category: "体を整える", memo: "窓辺や外で少し光を感じる" },
   { title: "5分だけ外に出る", category: "体を整える", memo: "短い時間で試せる行動" },
@@ -293,6 +322,25 @@ function loadPrivacySettings() {
   }
 }
 
+function loadHabitSettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(habitSettingsStorageKey) || "{}") as Partial<HabitSettings>;
+    const settings = normalizeHabitSettings(parsed);
+    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  } catch {
+    const settings = defaultHabitSettings();
+    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  }
+}
+
+function loadReminderDismissals() {
+  const dismissals = readStorage<Partial<ReminderDismissal>>(reminderDismissalsStorageKey).map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[];
+  localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(dismissals));
+  return dismissals;
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
@@ -301,6 +349,8 @@ function App() {
   const [selfCareLogs, setSelfCareLogs] = useState<SelfCareLog[]>(loadSelfCareLogs);
   const [consultationNotes, setConsultationNotes] = useState<ConsultationNote[]>(loadConsultationNotes);
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(loadPrivacySettings);
+  const [habitSettings, setHabitSettings] = useState<HabitSettings>(loadHabitSettings);
+  const [reminderDismissals, setReminderDismissals] = useState<ReminderDismissal[]>(loadReminderDismissals);
   const [isLocked, setIsLocked] = useState(() => loadPrivacySettings().isLockEnabled);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
@@ -343,6 +393,21 @@ function App() {
   const updatePrivacySettings = (settings: PrivacySettings) => {
     savePrivacySettings(settings);
     setFlash("プライバシー設定を更新しました");
+  };
+
+  const updateHabitSettings = (settings: HabitSettings) => {
+    setHabitSettings(settings);
+    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(settings));
+    setFlash("習慣サポートを更新しました");
+  };
+
+  const dismissReminderToday = () => {
+    const next = [
+      { date: today(), dismissedAt: nowIso() },
+      ...reminderDismissals.filter((item) => item.date !== today()),
+    ].slice(0, 60);
+    setReminderDismissals(next);
+    localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(next));
   };
 
   const lockApp = () => {
@@ -456,6 +521,8 @@ function App() {
     setSelfCarePlans(backup.selfCarePlans);
     setSelfCareLogs(backup.selfCareLogs);
     setConsultationNotes(backup.consultationNotes);
+    setHabitSettings(normalizeHabitSettings(backup.habitSettings));
+    setReminderDismissals(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[]);
     const nextPrivacy = normalizeImportedPrivacySettings(backup.privacySettings, privacySettings);
     setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify(backup.dailyRecords));
@@ -464,6 +531,8 @@ function App() {
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(backup.selfCareLogs));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(backup.consultationNotes));
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
+    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(normalizeHabitSettings(backup.habitSettings)));
+    localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean)));
     setPendingImport(null);
     setDetailItem(null);
     setFlash("バックアップを読み込みました");
@@ -555,6 +624,11 @@ function App() {
     setScreen("about");
   };
 
+  const openHabit = () => {
+    setFlash("");
+    setScreen("habit");
+  };
+
   const closeOnboarding = (markCompleted: boolean) => {
     if (markCompleted) {
       localStorage.setItem(onboardingCompletedStorageKey, "true");
@@ -584,12 +658,15 @@ function App() {
             selfCareLogs={selfCareLogs}
             consultationNotes={consultationNotes}
             privateDisplayMode={privacySettings.privateDisplayMode}
+            habitSettings={habitSettings}
+            reminderDismissals={reminderDismissals}
             flash={flash}
             onCareDone={setLoggingPlan}
             onConsultation={openConsultation}
             onLock={lockApp}
             onDaily={openDaily}
             onSudden={openSudden}
+            onDismissReminder={dismissReminderToday}
           />
         )}
         {screen === "recordHub" && (
@@ -676,9 +753,20 @@ function App() {
             onPrivacy={openPrivacy}
             onGuide={openGuide}
             onAbout={openAbout}
+            onHabit={openHabit}
           />
         )}
         {screen === "about" && <AboutScreen />}
+        {screen === "habit" && (
+          <HabitSupportScreen
+            settings={habitSettings}
+            dailyRecords={dailyRecords}
+            privateDisplayMode={privacySettings.privateDisplayMode}
+            flash={flash}
+            onSave={updateHabitSettings}
+            onDaily={openDaily}
+          />
+        )}
         {screen === "data" && (
           <DataManagement
             dailyRecords={dailyRecords}
@@ -687,6 +775,8 @@ function App() {
             selfCareLogs={selfCareLogs}
             consultationNotes={consultationNotes}
             privacySettings={privacySettings}
+            habitSettings={habitSettings}
+            reminderDismissals={reminderDismissals}
             flash={flash}
             onImportRequest={setPendingImport}
             onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
@@ -980,12 +1070,15 @@ function Home({
   selfCareLogs,
   consultationNotes,
   privateDisplayMode,
+  habitSettings,
+  reminderDismissals,
   flash,
   onDaily,
   onSudden,
   onConsultation,
   onLock,
   onCareDone,
+  onDismissReminder,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -993,12 +1086,15 @@ function Home({
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
   privateDisplayMode: boolean;
+  habitSettings: HabitSettings;
+  reminderDismissals: ReminderDismissal[];
   flash: string;
   onDaily: () => void;
   onSudden: () => void;
   onConsultation: () => void;
   onLock: () => void;
   onCareDone: (plan: SelfCarePlan) => void;
+  onDismissReminder: () => void;
 }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const todayPlans = selfCarePlans.slice(0, 3);
@@ -1006,6 +1102,9 @@ function Home({
   const openNotes = consultationNotes.filter((note) => note.status !== "done");
   const latestNote = [...consultationNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const showFirstUseHint = dailyRecords.length === 0 && suddenLogs.length === 0;
+  const habitSummary = getHabitSummary(dailyRecords);
+  const showReminder = shouldShowHabitReminder(habitSettings, dailyRecords, reminderDismissals);
+  const showRestart = shouldShowRestartSupport(dailyRecords, reminderDismissals);
 
   return (
     <section>
@@ -1024,6 +1123,31 @@ function Home({
         </div>
       )}
 
+      {showReminder && (
+        <section className="section-block reminder-card">
+          <p className="label">やさしいリマインダー</p>
+          <h2>今日の記録を少しだけ残せます</h2>
+          <p className="soft-text">{habitSettings.reminderMessage || defaultReminderMessages[0]}</p>
+          <p className="soft-text">すべて入力しなくても大丈夫です。</p>
+          <div className="data-actions">
+            <button className="primary-btn" onClick={onDaily}>今日の記録へ</button>
+            <button className="secondary-btn no-margin" onClick={onDismissReminder}>今は表示しない</button>
+          </div>
+        </section>
+      )}
+
+      {!showReminder && showRestart && (
+        <section className="section-block reminder-card">
+          <p className="label">再開のメモ</p>
+          <h2>少し間が空いても大丈夫です</h2>
+          <p className="soft-text">今日の状態だけ、短く残すこともできます。</p>
+          <div className="data-actions">
+            <button className="primary-btn" onClick={onDaily}>今日の記録へ</button>
+            <button className="secondary-btn no-margin" onClick={onDismissReminder}>あとで</button>
+          </div>
+        </section>
+      )}
+
       <section className="status-panel">
         <div>
           <p className="label">今日の記録</p>
@@ -1033,6 +1157,17 @@ function Home({
           <Metric label="気分" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatScore(todayRecord.mood) : "-"} />
           <Metric label="不安" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatScore(todayRecord.anxiety) : "-"} />
           <Metric label="睡眠" value={privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatSleepHours(todayRecord.sleepHours) : "-"} />
+        </div>
+      </section>
+
+      <section className="section-block">
+        <h2>記録のペース</h2>
+        <p className="soft-text">記録の間隔が空いても、また再開できます。</p>
+        <div className="summary-list">
+          <Metric label="今月" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.monthCount}日分`} />
+          <Metric label="直近7日" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.recent7Count}日`} />
+          <Metric label="最後の記録" value={privateDisplayMode ? "記録あり" : habitSummary.lastDate || "なし"} />
+          <Metric label="今週" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.weekCount}回`} />
         </div>
       </section>
 
@@ -1056,6 +1191,7 @@ function Home({
 
       <section className="section-block">
         <h2>今日の小さな一手</h2>
+        {!todayRecord && todayPlans.length > 0 && <p className="soft-text">記録が難しい日は、小さな一手だけでも大丈夫です。</p>}
         {todayPlans.length === 0 ? (
           <p className="soft-text">セルフケアから自分に合いそうな行動を追加できます。</p>
         ) : (
@@ -1173,12 +1309,14 @@ function MenuScreen({
   onPrivacy,
   onGuide,
   onAbout,
+  onHabit,
 }: {
   onConsultation: () => void;
   onData: () => void;
   onPrivacy: () => void;
   onGuide: () => void;
   onAbout: () => void;
+  onHabit: () => void;
 }) {
   return (
     <section>
@@ -1194,6 +1332,7 @@ function MenuScreen({
         <h2>開く</h2>
         <div className="data-actions">
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談ノート</button>
+          <button className="secondary-btn no-margin" onClick={onHabit}>習慣サポート</button>
           <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
           <button className="secondary-btn no-margin" onClick={onPrivacy}>プライバシー設定</button>
           <button className="secondary-btn no-margin" onClick={onGuide}>使い方ガイド</button>
@@ -1264,6 +1403,99 @@ function AboutScreen() {
   );
 }
 
+function HabitSupportScreen({
+  settings,
+  dailyRecords,
+  privateDisplayMode,
+  flash,
+  onSave,
+  onDaily,
+}: {
+  settings: HabitSettings;
+  dailyRecords: DailyRecord[];
+  privateDisplayMode: boolean;
+  flash: string;
+  onSave: (settings: HabitSettings) => void;
+  onDaily: () => void;
+}) {
+  const [form, setForm] = useState(settings);
+  const [messageMode, setMessageMode] = useState(defaultReminderMessages.includes(settings.reminderMessage) ? "デフォルト文" : "カスタム文");
+  const summary = getHabitSummary(dailyRecords);
+  const weekGoal = weeklyGoalValue(form);
+  const remaining = weekGoal ? Math.max(0, weekGoal - summary.weekCount) : 0;
+
+  const update = (next: HabitSettings) => {
+    setForm(next);
+    onSave({ ...next, updatedAt: nowIso() });
+  };
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">思い出す補助</p>
+          <h1>習慣サポート</h1>
+        </div>
+      </header>
+      <p className="soft-text">記録を続けるための小さな補助を設定できます。毎日できなくても大丈夫です。</p>
+      {flash && <div className="success-message">{flash}</div>}
+
+      <section className="section-block data-card">
+        <h2>リマインダー</h2>
+        <p className="soft-text">通知ではなく、アプリを開いたときに表示するやさしい案内です。</p>
+        <Choice label="リマインダー" options={["使う", "使わない"]} value={form.enabled ? "使う" : "使わない"} onChange={(value) => update({ ...form, enabled: value === "使う" })} />
+        <Choice label="記録したい時間" options={reminderTimeTypes} value={form.reminderTimeType} onChange={(value) => update({ ...form, reminderTimeType: value as ReminderTimeType })} />
+        {form.reminderTimeType === "自由入力" && (
+          <label className="field">
+            <span>時間 <small>任意</small></span>
+            <input type="time" value={form.customReminderTime} onChange={(event) => update({ ...form, customReminderTime: event.target.value })} />
+          </label>
+        )}
+        <Choice label="表示メッセージ" options={["デフォルト文", "カスタム文"]} value={messageMode} onChange={(value) => setMessageMode(value)} />
+        {messageMode === "デフォルト文" ? (
+          <Choice label="文面" options={defaultReminderMessages} value={defaultReminderMessages.includes(form.reminderMessage) ? form.reminderMessage : defaultReminderMessages[0]} onChange={(value) => update({ ...form, reminderMessage: value })} />
+        ) : (
+          <TextArea label="カスタム文" helper="短く、やさしい文にしておけます" value={form.reminderMessage} onChange={(value) => update({ ...form, reminderMessage: value })} />
+        )}
+      </section>
+
+      <section className="section-block data-card">
+        <h2>記録の目安</h2>
+        <p className="soft-text">目標はいつでも変えられます。無理なく続けるための目安です。</p>
+        <Choice label="週の目安" options={weeklyGoalTypes} value={form.weeklyGoalType} onChange={(value) => update({ ...form, weeklyGoalType: value as WeeklyGoalType })} />
+        {form.weeklyGoalType === "カスタム" && (
+          <label className="field">
+            <span>週あたりの回数 <small>任意</small></span>
+            <input
+              type="number"
+              min="1"
+              max="7"
+              inputMode="numeric"
+              value={form.customWeeklyGoal}
+              onChange={(event) => update({ ...form, customWeeklyGoal: clampWeeklyGoal(Number(event.target.value)) })}
+            />
+          </label>
+        )}
+        <div className="notice compact-notice">
+          {weekGoal ? `今週は${summary.weekCount}回記録できています。${remaining > 0 ? `あと${remaining}回記録すると、今週の目安に近づきます。` : "今週の目安に近いペースです。"}` : "できる日に記録する、という形で使えます。"}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <h2>継続状況</h2>
+        <p className="soft-text">記録の間隔が空いても、また再開できます。</p>
+        <div className="summary-list">
+          <Metric label="今月" value={privateDisplayMode ? "記録状況あり" : `${summary.monthCount}日分`} />
+          <Metric label="直近7日" value={privateDisplayMode ? "記録状況あり" : `${summary.recent7Count}日`} />
+          <Metric label="最後の記録" value={privateDisplayMode ? "記録あり" : summary.lastDate || "なし"} />
+          <Metric label="よく記録する時間" value={privateDisplayMode ? "記録状況あり" : summary.commonTime || "まだ少なめ"} />
+        </div>
+        <button className="secondary-btn" onClick={onDaily}>今日の記録へ</button>
+      </section>
+    </section>
+  );
+}
+
 function DataManagement({
   dailyRecords,
   suddenLogs,
@@ -1271,6 +1503,8 @@ function DataManagement({
   selfCareLogs,
   consultationNotes,
   privacySettings,
+  habitSettings,
+  reminderDismissals,
   flash,
   onImportRequest,
   onDeleteAllRequest,
@@ -1281,6 +1515,8 @@ function DataManagement({
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
   privacySettings: PrivacySettings;
+  habitSettings: HabitSettings;
+  reminderDismissals: ReminderDismissal[];
   flash: string;
   onImportRequest: (backup: BackupData) => void;
   onDeleteAllRequest: () => void;
@@ -1302,6 +1538,8 @@ function DataManagement({
     selfCareLogs,
     consultationNotes,
     privacySettings: toBackupPrivacySettings(privacySettings),
+    habitSettings,
+    reminderDismissals,
   };
 
   const handleImport = async (file: File | undefined) => {
@@ -1408,7 +1646,7 @@ function DataManagement({
 
       <section className="section-block data-card">
         <h2>JSONバックアップ</h2>
-        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、プライバシー設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。</p>
+        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、プライバシー設定、習慣サポート設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。</p>
         <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
       </section>
 
@@ -2945,6 +3183,63 @@ function daysAgo(date: string) {
   return Math.floor((start - target) / 86400000);
 }
 
+function getHabitSummary(records: DailyRecord[]) {
+  const uniqueDates = [...new Set(records.map((record) => record.date))];
+  const currentMonth = today().slice(0, 7);
+  const monthCount = uniqueDates.filter((date) => date.startsWith(currentMonth)).length;
+  const recent7Count = uniqueDates.filter((date) => daysAgo(date) >= 0 && daysAgo(date) < 7).length;
+  const weekCount = uniqueDates.filter((date) => daysAgo(date) >= 0 && daysAgo(date) < 7).length;
+  const lastDate = [...uniqueDates].sort((a, b) => b.localeCompare(a))[0] || "";
+  const commonTime = firstKey(countBy(records.filter((record) => record.createdAt), (record) => timeBucketFromHour(new Date(record.createdAt).getHours())));
+  return { monthCount, recent7Count, weekCount, lastDate, commonTime: commonTime === "記録なし" ? "" : commonTime };
+}
+
+function shouldShowHabitReminder(settings: HabitSettings, records: DailyRecord[], dismissals: ReminderDismissal[]) {
+  if (!settings.enabled) return false;
+  if (records.some((record) => record.date === today())) return false;
+  if (dismissals.some((item) => item.date === today())) return false;
+  return reminderTimePassed(settings);
+}
+
+function shouldShowRestartSupport(records: DailyRecord[], dismissals: ReminderDismissal[]) {
+  if (records.length === 0) return false;
+  if (dismissals.some((item) => item.date === today())) return false;
+  const lastDate = getHabitSummary(records).lastDate;
+  return lastDate ? daysAgo(lastDate) >= 7 : false;
+}
+
+function reminderTimePassed(settings: HabitSettings) {
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  return currentMinutes >= reminderMinutes(settings);
+}
+
+function reminderMinutes(settings: HabitSettings) {
+  const defaults: Record<ReminderTimeType, string> = {
+    朝: "08:00",
+    昼: "12:00",
+    夕方: "17:00",
+    夜: "20:00",
+    自由入力: settings.customReminderTime || "20:00",
+  };
+  const [hours, minutes] = defaults[settings.reminderTimeType].split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function timeBucketFromHour(hour: number) {
+  if (hour < 11) return "朝";
+  if (hour < 15) return "昼";
+  if (hour < 19) return "夕方";
+  return "夜";
+}
+
+function weeklyGoalValue(settings: HabitSettings) {
+  if (settings.weeklyGoalType === "週に1回") return 1;
+  if (settings.weeklyGoalType === "週に3回") return 3;
+  if (settings.weeklyGoalType === "カスタム") return clampWeeklyGoal(settings.customWeeklyGoal);
+  return null;
+}
+
 function toDateTimeLocal(iso: string) {
   const date = new Date(iso);
   const offset = date.getTimezoneOffset() * 60000;
@@ -3243,7 +3538,7 @@ function firstKey(items: [string, number][]) {
 function navGroup(screen: Screen) {
   if (screen === "daily" || screen === "sudden" || screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report") return "review";
-  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about") return "menu";
+  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit") return "menu";
   return screen;
 }
 
@@ -3403,6 +3698,41 @@ function toBackupPrivacySettings(settings: PrivacySettings): BackupPrivacySettin
   };
 }
 
+function defaultHabitSettings(): HabitSettings {
+  return {
+    enabled: false,
+    reminderTimeType: "夜",
+    customReminderTime: "20:00",
+    reminderMessage: defaultReminderMessages[0],
+    weeklyGoalType: "できる日に記録する",
+    customWeeklyGoal: 1,
+    updatedAt: nowIso(),
+  };
+}
+
+function normalizeHabitSettings(settings?: Partial<HabitSettings>): HabitSettings {
+  const defaults = defaultHabitSettings();
+  return {
+    enabled: Boolean(settings?.enabled),
+    reminderTimeType: reminderTimeTypes.includes(settings?.reminderTimeType as ReminderTimeType) ? (settings?.reminderTimeType as ReminderTimeType) : defaults.reminderTimeType,
+    customReminderTime: typeof settings?.customReminderTime === "string" && /^\d{2}:\d{2}$/.test(settings.customReminderTime) ? settings.customReminderTime : defaults.customReminderTime,
+    reminderMessage: typeof settings?.reminderMessage === "string" && settings.reminderMessage.trim() ? settings.reminderMessage : defaults.reminderMessage,
+    weeklyGoalType: weeklyGoalTypes.includes(settings?.weeklyGoalType as WeeklyGoalType) ? (settings?.weeklyGoalType as WeeklyGoalType) : defaults.weeklyGoalType,
+    customWeeklyGoal: clampWeeklyGoal(settings?.customWeeklyGoal ?? defaults.customWeeklyGoal),
+    updatedAt: settings?.updatedAt || nowIso(),
+  };
+}
+
+function normalizeReminderDismissal(item: Partial<ReminderDismissal>): ReminderDismissal | null {
+  if (!item.date || !item.dismissedAt) return null;
+  return { date: item.date, dismissedAt: item.dismissedAt };
+}
+
+function clampWeeklyGoal(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(7, Math.max(1, Math.round(value)));
+}
+
 function normalizeAutoLock(value: unknown): AutoLockMinutes {
   return [1, 5, 15, 30, 0].includes(value as number) ? (value as AutoLockMinutes) : 5;
 }
@@ -3462,6 +3792,8 @@ function normalizeBackupData(data: unknown): BackupData {
       selfCareLogs: [],
       consultationNotes: [],
       privacySettings: toBackupPrivacySettings(defaultPrivacySettings()),
+      habitSettings: defaultHabitSettings(),
+      reminderDismissals: [],
     };
   }
 
@@ -3473,6 +3805,8 @@ function normalizeBackupData(data: unknown): BackupData {
     selfCareLogs?: Partial<SelfCareLog>[];
     consultationNotes?: Partial<ConsultationNote>[];
     privacySettings?: BackupPrivacySettings;
+    habitSettings?: Partial<HabitSettings>;
+    reminderDismissals?: Partial<ReminderDismissal>[];
     daily?: Partial<DailyRecord>[];
     sudden?: Partial<SuddenLog>[];
   };
@@ -3497,6 +3831,8 @@ function normalizeBackupData(data: unknown): BackupData {
       passcodeIncluded: false,
       updatedAt: source.privacySettings.updatedAt || nowIso(),
     } : toBackupPrivacySettings(defaultPrivacySettings()),
+    habitSettings: normalizeHabitSettings(source.habitSettings),
+    reminderDismissals: Array.isArray(source.reminderDismissals) ? source.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[] : [],
   };
 }
 
