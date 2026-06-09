@@ -91,7 +91,9 @@ type IfThenLog = {
   planTitle: string;
   ifText: string;
   thenText: string;
-  result: SelfCareResult;
+  fitScore: number | null;
+  easeScore: number | null;
+  legacyResult?: SelfCareResult;
   memo: string;
   createdAt: string;
 };
@@ -408,7 +410,7 @@ function loadIfThenPlans() {
 }
 
 function loadIfThenLogs() {
-  const logs = readStorage<Partial<IfThenLog>>(ifThenLogsStorageKey).map(normalizeIfThenLog);
+  const logs = readStorage<Partial<IfThenLog> & { result?: SelfCareResult }>(ifThenLogsStorageKey).map(normalizeIfThenLog);
   localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(logs));
   return logs;
 }
@@ -2911,7 +2913,7 @@ function IfThenScreen({
             {sortedPlans.map((plan) => {
               const planLogs = logs.filter((log) => log.planId === plan.id);
               const lastLog = planLogs[0];
-              const habitCandidate = planLogs.length >= 3 && planLogs.filter((log) => log.result === "少し整った").length >= 2;
+              const habitCandidate = isIfThenHabitCandidate(planLogs);
               return (
                 <article className="record-card ifthen-card" key={plan.id}>
                   <div className="record-card-head">
@@ -2929,6 +2931,8 @@ function IfThenScreen({
                   <div className="compact-metrics">
                     <Metric label="実行回数" value={`${planLogs.length}回`} />
                     <Metric label="最終実行" value={lastLog ? formatDateTime(lastLog.createdAt) : "なし"} />
+                    <Metric label="平均整いやすさ" value={formatAverageWithSuffix(formatAverage(planLogs.map((log) => log.fitScore)), "/10")} />
+                    <Metric label="平均実行しやすさ" value={formatAverageWithSuffix(formatAverage(planLogs.map((log) => log.easeScore)), "/10")} />
                   </div>
                   {plan.memo && <p className="record-snippet">{privateDisplayMode ? "メモは非表示です" : plan.memo}</p>}
                   {habitCandidate && (
@@ -2960,7 +2964,8 @@ function IfThenScreen({
             {logs.slice(0, 6).map((log) => (
               <div className="detail-row" key={log.id}>
                 <span>{formatDateTime(log.createdAt)}</span>
-                <strong>{privateDisplayMode ? "実行ログあり" : `${log.planTitle} / ${log.result}`}</strong>
+                <strong>{privateDisplayMode ? "実行ログあり" : `${log.planTitle} / ${formatIfThenLogScores(log)}`}</strong>
+                {!privateDisplayMode && log.legacyResult && <p className="record-snippet">以前の記録: {log.legacyResult}</p>}
               </div>
             ))}
           </div>
@@ -2974,6 +2979,7 @@ function IfThenScreen({
 
 function IfThenDetailModal({ plan, logs, privateDisplayMode, onClose }: { plan: IfThenPlan; logs: IfThenLog[]; privateDisplayMode: boolean; onClose: () => void }) {
   const hidden = privateDisplayMode ? "内容は非表示です" : "";
+  const latestLog = logs[0];
   const rows = [
     ["タイトル", hidden || plan.title],
     ["もし", hidden || plan.ifText],
@@ -2984,7 +2990,11 @@ function IfThenDetailModal({ plan, logs, privateDisplayMode, onClose }: { plan: 
     ["実行しやすさ", plan.ease],
     ["状態", plan.isActive ? "有効" : "一時停止"],
     ["実行回数", `${logs.length}回`],
-    ["最終実行", logs[0] ? formatDateTime(logs[0].createdAt) : "なし"],
+    ["平均整いやすさ", formatAverageWithSuffix(formatAverage(logs.map((log) => log.fitScore)), "/10")],
+    ["平均実行しやすさ", formatAverageWithSuffix(formatAverage(logs.map((log) => log.easeScore)), "/10")],
+    ["最終実行", latestLog ? formatDateTime(latestLog.createdAt) : "なし"],
+    ["最近の記録", latestLog ? formatIfThenLogScores(latestLog) : "記録なし"],
+    ["以前の記録", latestLog?.legacyResult || "記録なし"],
     ["メモ", hidden || plan.memo || "未入力"],
   ];
   return (
@@ -3011,14 +3021,18 @@ function IfThenDetailModal({ plan, logs, privateDisplayMode, onClose }: { plan: 
 }
 
 function IfThenLogModal({ plan, onCancel, onSave }: { plan: IfThenPlan; onCancel: () => void; onSave: (log: IfThenLog) => void }) {
-  const [result, setResult] = useState<SelfCareResult>("後で振り返る");
+  const [fitScore, setFitScore] = useState<number | null>(null);
+  const [easeScore, setEaseScore] = useState<number | null>(null);
   const [memo, setMemo] = useState("");
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="confirm-modal">
         <h2>実行した記録</h2>
         <p>{plan.ifText} → {plan.thenText}</p>
-        <Choice label="実行後の感じ方" options={["少し整った", "変化は少なめ", "今は合わなかった", "後で振り返る"]} value={result} onChange={(value) => setResult(value as SelfCareResult)} />
+        <ScoreField label="整いやすさ" value={fitScore} onChange={setFitScore} />
+        <p className="score-guide">1: 今は合いにくかった / 5: 変化は少なめ / 10: かなり整った</p>
+        <ScoreField label="実行しやすさ" value={easeScore} onChange={setEaseScore} />
+        <p className="score-guide">1: かなり難しかった / 5: 少し準備が必要 / 10: すぐできた</p>
         <TextArea label="メモ" helper="短く残せます" value={memo} onChange={setMemo} />
         <div className="confirm-actions">
           <button className="secondary-action" onClick={onCancel}>キャンセル</button>
@@ -3031,7 +3045,9 @@ function IfThenLogModal({ plan, onCancel, onSave }: { plan: IfThenPlan; onCancel
                 planTitle: plan.title,
                 ifText: plan.ifText,
                 thenText: plan.thenText,
-                result,
+                fitScore,
+                easeScore,
+                legacyResult: undefined,
                 memo,
                 createdAt: nowIso(),
               })
@@ -3978,8 +3994,15 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
   const selfCareCounts = countBy(selfCareLogs, (log) => log.title);
   const selfCareResultCounts = countBy(selfCareLogs, (log) => log.result);
   const ifThenCounts = countBy(ifThenLogs, (log) => log.planTitle);
-  const ifThenSettled = countBy(ifThenLogs.filter((log) => log.result === "少し整った"), (log) => log.planTitle);
-  const ifThenNotFit = countBy(ifThenLogs.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle);
+  const ifThenScoreSummaries = summarizeIfThenScores(ifThenPlans, ifThenLogs);
+  const highFitIfThen = ifThenScoreItems(ifThenScoreSummaries, "averageFit");
+  const highEaseIfThen = ifThenScoreItems(ifThenScoreSummaries, "averageEase");
+  const lowFitIfThen = ifThenScoreSummaries
+    .filter((summary) => summary.averageFit !== null && summary.averageFit <= 3)
+    .sort((a, b) => a.averageFit! - b.averageFit!)
+    .slice(0, 3)
+    .map((summary) => [summary.title, summary.averageFit!.toFixed(1)] as [string, string]);
+  const habitIfThen = ifThenHabitItems(ifThenScoreSummaries);
   const ifThenStateTagCounts = countFlat(ifThenPlans.flatMap((plan) => plan.relatedStateTags));
   const ifThenThoughtTagCounts = countFlat(ifThenPlans.flatMap((plan) => plan.relatedThoughtTags));
   const thoughtTagCounts = countFlat([
@@ -4084,11 +4107,15 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
               <Metric label="プラン数" value={`${ifThenPlans.length}件`} />
               <Metric label="有効なプラン" value={`${ifThenPlans.filter((plan) => plan.isActive).length}件`} />
               <Metric label="実行回数" value={`${ifThenLogs.length}回`} />
+              <Metric label="平均整いやすさ" value={formatAverageWithSuffix(formatAverage(ifThenLogs.map((log) => log.fitScore)), "/10")} />
+              <Metric label="平均実行しやすさ" value={formatAverageWithSuffix(formatAverage(ifThenLogs.map((log) => log.easeScore)), "/10")} />
               <Metric label="最近の実行" value={ifThenLogs[0] ? formatDateTime(ifThenLogs[0].createdAt) : "なし"} />
             </div>
             <KeyValueList title="よく実行したプラン" items={ifThenCounts} suffix="回" />
-            <KeyValueList title="実行後に整ったと感じたプラン" items={ifThenSettled} suffix="回" />
-            <KeyValueList title="今は合わなかったプラン" items={ifThenNotFit} suffix="回" />
+            <KeyValueList title="整いやすさが高いプラン" items={highFitIfThen} suffix="/10" />
+            <KeyValueList title="実行しやすさが高いプラン" items={highEaseIfThen} suffix="/10" />
+            <KeyValueList title="習慣化候補のプラン" items={habitIfThen} suffix="" />
+            <KeyValueList title="今は合いにくかったプラン" items={lowFitIfThen} suffix="/10" />
             <KeyValueList title="関連状態タグ別の傾向" items={ifThenStateTagCounts} suffix="件" />
             <KeyValueList title="関連思考タグ別の傾向" items={ifThenThoughtTagCounts} suffix="件" />
           </>
@@ -4164,8 +4191,17 @@ function Report({
   const selfCompassionWords = thoughtInPeriod.filter((note) => note.selfCompassion.trim()).slice(0, 3).map((note) => `- ${note.selfCompassion}`).join("\n") || "記録なし";
   const activeIfThen = ifThenPlans.filter((plan) => plan.isActive).slice(0, 5).map((plan) => `- ${plan.title}: もし ${plan.ifText} / そのとき ${plan.thenText}`).join("\n") || "記録なし";
   const topIfThen = countBy(ifThenLogsInPeriod, (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
-  const settledIfThen = countBy(ifThenLogsInPeriod.filter((log) => log.result === "少し整った"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
-  const notFitIfThen = countBy(ifThenLogsInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const ifThenSummaries = summarizeIfThenScores(ifThenPlans, ifThenLogsInPeriod);
+  const highFitIfThen = joinIfThenScoreTitles(ifThenScoreItems(ifThenSummaries, "averageFit"));
+  const highEaseIfThen = joinIfThenScoreTitles(ifThenScoreItems(ifThenSummaries, "averageEase"));
+  const habitIfThen = ifThenHabitItems(ifThenSummaries).map(([title, count]) => `${title}（${count}）`).join("、") || "記録なし";
+  const notFitIfThen = joinIfThenScoreTitles(
+    ifThenSummaries
+      .filter((summary) => summary.averageFit !== null && summary.averageFit <= 3)
+      .sort((a, b) => a.averageFit! - b.averageFit!)
+      .slice(0, 3)
+      .map((summary) => [summary.title, summary.averageFit!.toFixed(1)] as [string, string]),
+  );
   const pendingNotes = consultationNotes.filter((note) => note.status !== "done");
   const doneNotes = consultationNotes.filter((note) => note.status === "done");
   const includedNotes = consultationNotes.filter((note) => note.includeInReport || note.status !== "done").slice(0, 5);
@@ -4197,8 +4233,10 @@ ${selfCompassionWords}
 作成しているIf-Thenプラン:
 ${activeIfThen}
 よく実行したIf-Thenプラン: ${topIfThen}
-実行後に整ったと感じたIf-Thenプラン: ${settledIfThen}
-今は合わなかったIf-Thenプラン: ${notFitIfThen}
+平均整いやすさが高いIf-Thenプラン: ${highFitIfThen}
+平均実行しやすさが高いIf-Thenプラン: ${highEaseIfThen}
+習慣化候補のIf-Thenプラン: ${habitIfThen}
+今は合いにくかったIf-Thenプラン: ${notFitIfThen}
 未相談のメモ: ${pendingNotes.length}件
 相談済みのメモ: ${doneNotes.length}件
 
@@ -5062,8 +5100,11 @@ function calculateIfThenInsights(plans: IfThenPlan[], logs: IfThenLog[]): Insigh
   const insights: Insight[] = [];
   const activeCount = plans.filter((plan) => plan.isActive).length;
   const topPlan = countBy(recent, (log) => log.planTitle)[0];
-  const settled = countBy(recent.filter((log) => log.result === "少し整った"), (log) => log.planTitle)[0];
-  const notFit = countBy(recent.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle)[0];
+  const summaries = summarizeIfThenScores(plans, recent);
+  const highFit = summaries.filter((summary) => summary.averageFit !== null && summary.averageFit >= 7).sort((a, b) => b.averageFit! - a.averageFit!)[0];
+  const highEase = summaries.filter((summary) => summary.averageEase !== null && summary.averageEase >= 7).sort((a, b) => b.averageEase! - a.averageEase!)[0];
+  const notFit = summaries.filter((summary) => summary.averageFit !== null && summary.averageFit <= 3).sort((a, b) => a.averageFit! - b.averageFit!)[0];
+  const habitCandidate = summaries.filter((summary) => summary.isHabitCandidate).sort((a, b) => b.logCount - a.logCount)[0];
 
   if (activeCount > 0) {
     insights.push({
@@ -5087,24 +5128,46 @@ function calculateIfThenInsights(plans: IfThenPlan[], logs: IfThenLog[]): Insigh
       note: "記録上の傾向です。必ず合うという意味ではありません。",
     });
   }
-  if (settled && settled[1] >= 2) {
+  if (highFit) {
     insights.push({
       id: "ifthen-settled",
       group: "ifthen",
       title: "整いやすい可能性があるIf-Thenプランがあります",
-      description: `「${settled[0]}」は、実行後に「少し整った」と${settled[1]}回記録されています。`,
-      relatedCount: settled[1],
+      description: `「${highFit.title}」は、平均整いやすさが${highFit.averageFit!.toFixed(1)}/10で記録されています。`,
+      relatedCount: highFit.logCount,
       action: "使いやすかった条件を相談時の材料として残せます。",
       note: "参考情報として見てください。効果を断定するものではありません。",
     });
   }
-  if (notFit && notFit[1] >= 2) {
+  if (highEase) {
+    insights.push({
+      id: "ifthen-easy",
+      group: "ifthen",
+      title: "実行しやすい可能性があるIf-Thenプランがあります",
+      description: `「${highEase.title}」は、平均実行しやすさが${highEase.averageEase!.toFixed(1)}/10で記録されています。`,
+      relatedCount: highEase.logCount,
+      action: "続けやすいタイミングや準備の少なさを見返す材料にできます。",
+      note: "記録上の傾向です。無理に続ける必要はありません。",
+    });
+  }
+  if (habitCandidate) {
+    insights.push({
+      id: "ifthen-habit",
+      group: "ifthen",
+      title: "習慣化候補として見られるプランがあります",
+      description: `「${habitCandidate.title}」は、実行回数と2つの平均スコアが比較的高めに残っています。`,
+      relatedCount: habitCandidate.logCount,
+      action: "マイプランに残す、少し小さくするなど、続けやすい形を考える材料になります。",
+      note: "記録上、このプランは続けやすい可能性があります。",
+    });
+  }
+  if (notFit) {
     insights.push({
       id: "ifthen-not-fit",
       group: "ifthen",
       title: "今の状態では合いにくい日があるかもしれません",
-      description: `「${notFit[0]}」は、「今は合わなかった」と${notFit[1]}回記録されています。`,
-      relatedCount: notFit[1],
+      description: `「${notFit.title}」は、平均整いやすさが${notFit.averageFit!.toFixed(1)}/10で記録されています。`,
+      relatedCount: notFit.logCount,
       action: "行動をもっと小さくする、別のタイミングにするなどの候補を考える材料になります。",
       note: "無理に続ける必要はありません。",
     });
@@ -5125,6 +5188,75 @@ function average(values: Array<number | null | undefined>) {
   const valid = values.filter(isFiniteNumber);
   if (!valid.length) return 0;
   return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function nullableAverage(values: Array<number | null | undefined>) {
+  const valid = values.filter(isFiniteNumber);
+  if (!valid.length) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function formatOptionalScore(value: number | null | undefined) {
+  return isFiniteNumber(value) ? `${value}/10` : "未記録";
+}
+
+function formatIfThenLogScores(log: IfThenLog) {
+  return `整いやすさ ${formatOptionalScore(log.fitScore)} / 実行しやすさ ${formatOptionalScore(log.easeScore)}`;
+}
+
+type IfThenScoreSummary = {
+  planId: string;
+  title: string;
+  logCount: number;
+  averageFit: number | null;
+  averageEase: number | null;
+  lastRun: string;
+  isHabitCandidate: boolean;
+};
+
+function summarizeIfThenScores(plans: IfThenPlan[], logs: IfThenLog[]): IfThenScoreSummary[] {
+  const planMap = new Map(plans.map((plan) => [plan.id, plan.title]));
+  const logsByPlan = groupItems(logs, (log) => log.planId || log.planTitle);
+  return Array.from(logsByPlan.entries()).map(([planId, planLogs]) => {
+    const sorted = [...planLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const averageFit = nullableAverage(planLogs.map((log) => log.fitScore));
+    const averageEase = nullableAverage(planLogs.map((log) => log.easeScore));
+    return {
+      planId,
+      title: planMap.get(planId) || sorted[0]?.planTitle || "If-Thenプラン",
+      logCount: planLogs.length,
+      averageFit,
+      averageEase,
+      lastRun: sorted[0]?.createdAt || "",
+      isHabitCandidate: planLogs.length >= 3 && averageFit !== null && averageEase !== null && averageFit >= 7 && averageEase >= 7,
+    };
+  });
+}
+
+function isIfThenHabitCandidate(logs: IfThenLog[]) {
+  const averageFit = nullableAverage(logs.map((log) => log.fitScore));
+  const averageEase = nullableAverage(logs.map((log) => log.easeScore));
+  return logs.length >= 3 && averageFit !== null && averageEase !== null && averageFit >= 7 && averageEase >= 7;
+}
+
+function ifThenScoreItems(summaries: IfThenScoreSummary[], key: "averageFit" | "averageEase", direction: "high" | "low" = "high") {
+  return summaries
+    .filter((summary) => summary[key] !== null)
+    .sort((a, b) => direction === "high" ? (b[key]! - a[key]!) : (a[key]! - b[key]!))
+    .slice(0, 3)
+    .map((summary) => [summary.title, summary[key]!.toFixed(1)] as [string, string]);
+}
+
+function ifThenHabitItems(summaries: IfThenScoreSummary[]) {
+  return summaries
+    .filter((summary) => summary.isHabitCandidate)
+    .sort((a, b) => b.logCount - a.logCount)
+    .slice(0, 3)
+    .map((summary) => [summary.title, `${summary.logCount}回`] as [string, string]);
+}
+
+function joinIfThenScoreTitles(items: [string, string][], suffix = "/10") {
+  return items.length ? items.map(([title, value]) => `${title}（${value}${suffix}）`).join("、") : "記録なし";
 }
 
 function firstKey(items: [string, number][]) {
@@ -5250,10 +5382,22 @@ function recommendIfThenPlans(plans: IfThenPlan[], logs: IfThenLog[], suddenLogs
     seen.add(plan.id);
     return true;
   });
-  const lastRunMap = new Map(logs.map((log) => [log.planId, log.createdAt]));
+  const latestByPlan = new Map<string, string>();
+  logs.forEach((log) => {
+    const current = latestByPlan.get(log.planId);
+    if (!current || log.createdAt > current) latestByPlan.set(log.planId, log.createdAt);
+  });
+  const summaries = new Map(summarizeIfThenScores(plans, logs).map((summary) => [summary.planId, summary]));
   const fallback = active
     .filter((plan) => !seen.has(plan.id))
-    .sort((a, b) => (lastRunMap.get(a.id) || "").localeCompare(lastRunMap.get(b.id) || ""));
+    .sort((a, b) => {
+      const aSummary = summaries.get(a.id);
+      const bSummary = summaries.get(b.id);
+      const aScore = (aSummary?.averageFit || 0) + (aSummary?.averageEase || 0);
+      const bScore = (bSummary?.averageFit || 0) + (bSummary?.averageEase || 0);
+      if (bScore !== aScore) return bScore - aScore;
+      return (latestByPlan.get(a.id) || "").localeCompare(latestByPlan.get(b.id) || "");
+    });
   return [...uniqueMatched, ...fallback];
 }
 
@@ -5279,8 +5423,17 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
   const compassionLines = thoughts.filter((note) => note.selfCompassion.trim()).slice(0, 3).map((note) => `- ${note.selfCompassion}`).join("\n") || "記録なし";
   const activeIfThen = ifThenPlans.filter((plan) => plan.isActive).slice(0, 5).map((plan) => `- ${plan.title}: もし ${plan.ifText} / そのとき ${plan.thenText}`).join("\n") || "記録なし";
   const topIfThen = countBy(ifThenInPeriod, (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
-  const settledIfThen = countBy(ifThenInPeriod.filter((log) => log.result === "少し整った"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
-  const notFitIfThen = countBy(ifThenInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.planTitle).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const ifThenSummaries = summarizeIfThenScores(ifThenPlans, ifThenInPeriod);
+  const highFitIfThen = joinIfThenScoreTitles(ifThenScoreItems(ifThenSummaries, "averageFit"));
+  const highEaseIfThen = joinIfThenScoreTitles(ifThenScoreItems(ifThenSummaries, "averageEase"));
+  const habitIfThen = ifThenHabitItems(ifThenSummaries).map(([title, count]) => `${title}（${count}）`).join("、") || "記録なし";
+  const notFitIfThen = joinIfThenScoreTitles(
+    ifThenSummaries
+      .filter((summary) => summary.averageFit !== null && summary.averageFit <= 3)
+      .sort((a, b) => a.averageFit! - b.averageFit!)
+      .slice(0, 3)
+      .map((summary) => [summary.title, summary.averageFit!.toFixed(1)] as [string, string]),
+  );
   const noteLines = notes.length
     ? notes.slice(0, 8).map((note) => `- ${note.title || "相談メモ"}（${targetLabel(note.target)} / ${statusLabel(note.status)}）: ${note.mainTopic || note.recentConcern || note.dontForgetMemo || "内容未記入"}`).join("\n")
     : "相談メモはまだありません。";
@@ -5307,8 +5460,10 @@ ${compassionLines}
 作成しているIf-Thenプラン:
 ${activeIfThen}
 よく実行したIf-Thenプラン: ${topIfThen}
-整いやすい可能性があったIf-Thenプラン: ${settledIfThen}
-今は合わなかったIf-Thenプラン: ${notFitIfThen}
+平均整いやすさが高いIf-Thenプラン: ${highFitIfThen}
+平均実行しやすさが高いIf-Thenプラン: ${highEaseIfThen}
+習慣化候補のIf-Thenプラン: ${habitIfThen}
+今は合いにくかったIf-Thenプラン: ${notFitIfThen}
 
 記録から見える傾向:
 ${insightLines}
@@ -5570,7 +5725,7 @@ function normalizeBackupData(data: unknown): BackupData {
     selfCarePlans?: Partial<SelfCarePlan>[];
     selfCareLogs?: Partial<SelfCareLog>[];
     ifThenPlans?: Partial<IfThenPlan>[];
-    ifThenLogs?: Partial<IfThenLog>[];
+    ifThenLogs?: Array<Partial<IfThenLog> & { result?: SelfCareResult }>;
     consultationNotes?: Partial<ConsultationNote>[];
     thoughtNotes?: Partial<ThoughtNote>[];
     privacySettings?: BackupPrivacySettings;
@@ -5725,13 +5880,15 @@ function toIfThenPlansCsv(plans: IfThenPlan[]) {
 
 function toIfThenLogsCsv(logs: IfThenLog[]) {
   const rows = [
-    ["実行日時", "プランタイトル", "もし", "そのとき", "実行後の感じ方", "メモ"],
+    ["実行日時", "プランタイトル", "もし", "そのとき", "整いやすさ", "実行しやすさ", "旧形式の感じ方", "メモ"],
     ...logs.map((log) => [
       formatDateTime(log.createdAt),
       log.planTitle,
       log.ifText,
       log.thenText,
-      log.result,
+      log.fitScore ?? "未記録",
+      log.easeScore ?? "未記録",
+      log.legacyResult || "",
       log.memo,
     ]),
   ];
@@ -5831,14 +5988,17 @@ function normalizeIfThenPlan(plan: Partial<IfThenPlan>): IfThenPlan {
   };
 }
 
-function normalizeIfThenLog(log: Partial<IfThenLog>): IfThenLog {
+function normalizeIfThenLog(log: Partial<IfThenLog> & { result?: SelfCareResult }): IfThenLog {
+  const legacyResult = log.legacyResult || log.result;
   return {
     id: log.id || newId(),
     planId: log.planId || "",
     planTitle: log.planTitle || "If-Thenプラン",
     ifText: log.ifText || "",
     thenText: log.thenText || "",
-    result: normalizeSelfCareResult(log.result),
+    fitScore: normalizeOptionalScore(log.fitScore ?? legacyResultToFitScore(legacyResult)),
+    easeScore: normalizeOptionalScore(log.easeScore),
+    legacyResult: legacyResult ? normalizeSelfCareResult(legacyResult) : undefined,
     memo: log.memo || "",
     createdAt: log.createdAt || nowIso(),
   };
@@ -5902,6 +6062,18 @@ function normalizeSelfCareResult(result?: string): SelfCareResult {
 function normalizeScore(value: unknown) {
   if (!isFiniteNumber(value)) return null;
   return Math.min(10, Math.max(1, Math.round(value)));
+}
+
+function normalizeOptionalScore(value: unknown) {
+  if (!isFiniteNumber(value)) return null;
+  return Math.min(10, Math.max(1, Math.round(value)));
+}
+
+function legacyResultToFitScore(result?: SelfCareResult) {
+  if (result === "今は合わなかった") return 2;
+  if (result === "変化は少なめ") return 5;
+  if (result === "少し整った") return 7;
+  return null;
 }
 
 function normalizeStateTags(tags?: string[], legacyState?: string) {

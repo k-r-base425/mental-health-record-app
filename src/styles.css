@@ -650,6 +650,13 @@ textarea {
   color: #fff;
 }
 
+.score-guide {
+  margin: -2px 0 10px;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
 .chip-grid {
   display: flex;
   flex-wrap: wrap;
@@ -958,6 +965,8 @@ textarea {
 }
 
 .confirm-modal {
+  max-height: min(88vh, 720px);
+  overflow: auto;
   margin: 0 14px max(14px, env(safe-area-inset-bottom));
   padding: 18px;
   border-radius: var(--radius-card);
@@ -975,10 +984,14 @@ textarea {
 }
 
 .confirm-actions {
+  position: sticky;
+  bottom: -18px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 14px;
+  margin: 14px -2px -18px;
+  padding: 12px 2px 18px;
+  background: var(--color-surface);
 }
 
 .data-card {
