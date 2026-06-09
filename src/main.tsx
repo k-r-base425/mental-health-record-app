@@ -121,6 +121,15 @@ type ReminderDismissal = {
   dismissedAt: string;
 };
 
+type DisplayTheme = "standard" | "soft" | "clear";
+type DisplayFontSize = "standard" | "large" | "xlarge";
+
+type DisplaySettings = {
+  theme: DisplayTheme;
+  fontSize: DisplayFontSize;
+  updatedAt: string;
+};
+
 type Insight = {
   id: string;
   title: string;
@@ -131,7 +140,7 @@ type Insight = {
   group: "daily" | "sudden" | "selfcare";
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "all" };
@@ -149,6 +158,7 @@ type BackupData = {
   privacySettings: BackupPrivacySettings;
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
+  displaySettings: DisplaySettings;
 };
 
 type DraftEnvelope<T> = {
@@ -171,6 +181,7 @@ const consultationDraftKey = "consultationNoteDraft";
 const selfCareDraftKey = "selfCareDraft";
 const habitSettingsStorageKey = "habitSettings";
 const reminderDismissalsStorageKey = "reminderDismissals";
+const displaySettingsStorageKey = "displaySettings";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -189,6 +200,8 @@ const consultationStatuses: ConsultationStatus[] = ["draft", "planned", "done", 
 const selfCareCategories: SelfCareCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "習慣を見直す"];
 const reminderTimeTypes: ReminderTimeType[] = ["朝", "昼", "夕方", "夜", "自由入力"];
 const weeklyGoalTypes: WeeklyGoalType[] = ["週に1回", "週に3回", "できる日に記録する", "カスタム"];
+const displayThemes: DisplayTheme[] = ["standard", "soft", "clear"];
+const displayFontSizes: DisplayFontSize[] = ["standard", "large", "xlarge"];
 const defaultReminderMessages = [
   "今日の状態を少しだけ記録してみませんか？",
   "全部入力しなくても大丈夫です",
@@ -341,6 +354,19 @@ function loadReminderDismissals() {
   return dismissals;
 }
 
+function loadDisplaySettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(displaySettingsStorageKey) || "{}") as Partial<DisplaySettings>;
+    const settings = normalizeDisplaySettings(parsed);
+    localStorage.setItem(displaySettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  } catch {
+    const settings = defaultDisplaySettings();
+    localStorage.setItem(displaySettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  }
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
@@ -351,6 +377,7 @@ function App() {
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(loadPrivacySettings);
   const [habitSettings, setHabitSettings] = useState<HabitSettings>(loadHabitSettings);
   const [reminderDismissals, setReminderDismissals] = useState<ReminderDismissal[]>(loadReminderDismissals);
+  const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(loadDisplaySettings);
   const [isLocked, setIsLocked] = useState(() => loadPrivacySettings().isLockEnabled);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
@@ -401,6 +428,13 @@ function App() {
     setHabitSettings(settings);
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(settings));
     setFlash("習慣サポートを更新しました");
+  };
+
+  const updateDisplaySettings = (settings: DisplaySettings) => {
+    const next = normalizeDisplaySettings({ ...settings, updatedAt: nowIso() });
+    setDisplaySettings(next);
+    localStorage.setItem(displaySettingsStorageKey, JSON.stringify(next));
+    setFlash("表示設定を更新しました");
   };
 
   const dismissReminderToday = () => {
@@ -525,6 +559,7 @@ function App() {
     setConsultationNotes(backup.consultationNotes);
     setHabitSettings(normalizeHabitSettings(backup.habitSettings));
     setReminderDismissals(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[]);
+    setDisplaySettings(normalizeDisplaySettings(backup.displaySettings));
     const nextPrivacy = normalizeImportedPrivacySettings(backup.privacySettings, privacySettings);
     setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify(backup.dailyRecords));
@@ -535,6 +570,7 @@ function App() {
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(normalizeHabitSettings(backup.habitSettings)));
     localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean)));
+    localStorage.setItem(displaySettingsStorageKey, JSON.stringify(normalizeDisplaySettings(backup.displaySettings)));
     setPendingImport(null);
     setDetailItem(null);
     setFlash("バックアップを読み込みました");
@@ -652,6 +688,11 @@ function App() {
     setScreen("habit");
   };
 
+  const openDisplay = () => {
+    setFlash("");
+    setScreen("display");
+  };
+
   const closeOnboarding = (markCompleted: boolean) => {
     if (markCompleted) {
       localStorage.setItem(onboardingCompletedStorageKey, "true");
@@ -671,7 +712,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
       <main className="screen">
         {screen === "home" && (
           <Home
@@ -792,6 +833,7 @@ function App() {
             onGuide={openGuide}
             onAbout={openAbout}
             onHabit={openHabit}
+            onDisplay={openDisplay}
           />
         )}
         {screen === "about" && <AboutScreen />}
@@ -805,6 +847,13 @@ function App() {
             onDaily={openDaily}
           />
         )}
+        {screen === "display" && (
+          <DisplaySettingsScreen
+            settings={displaySettings}
+            flash={flash}
+            onSave={updateDisplaySettings}
+          />
+        )}
         {screen === "data" && (
           <DataManagement
             dailyRecords={dailyRecords}
@@ -815,6 +864,7 @@ function App() {
             privacySettings={privacySettings}
             habitSettings={habitSettings}
             reminderDismissals={reminderDismissals}
+            displaySettings={displaySettings}
             flash={flash}
             onImportRequest={setPendingImport}
             onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
@@ -853,6 +903,8 @@ function App() {
           <button
             className={navGroup(screen) === id ? "active" : ""}
             key={id}
+            aria-label={`${label}を開く`}
+            aria-current={navGroup(screen) === id ? "page" : undefined}
             onClick={() => {
               moveToScreen(id as Screen);
             }}
@@ -1355,6 +1407,7 @@ function MenuScreen({
   onGuide,
   onAbout,
   onHabit,
+  onDisplay,
 }: {
   onConsultation: () => void;
   onData: () => void;
@@ -1362,6 +1415,7 @@ function MenuScreen({
   onGuide: () => void;
   onAbout: () => void;
   onHabit: () => void;
+  onDisplay: () => void;
 }) {
   return (
     <section>
@@ -1378,6 +1432,7 @@ function MenuScreen({
         <div className="data-actions">
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談ノート</button>
           <button className="secondary-btn no-margin" onClick={onHabit}>習慣サポート</button>
+          <button className="secondary-btn no-margin" onClick={onDisplay}>表示設定</button>
           <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
           <button className="secondary-btn no-margin" onClick={onPrivacy}>プライバシー設定</button>
           <button className="secondary-btn no-margin" onClick={onGuide}>使い方ガイド</button>
@@ -1536,6 +1591,58 @@ function HabitSupportScreen({
           <Metric label="よく記録する時間" value={privateDisplayMode ? "記録状況あり" : summary.commonTime || "まだ少なめ"} />
         </div>
         <button className="secondary-btn" onClick={onDaily}>今日の記録へ</button>
+      </section>
+    </section>
+  );
+}
+
+function DisplaySettingsScreen({ settings, flash, onSave }: { settings: DisplaySettings; flash: string; onSave: (settings: DisplaySettings) => void }) {
+  const [form, setForm] = useState(settings);
+  const update = (next: DisplaySettings) => {
+    setForm(next);
+    onSave(next);
+  };
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">読みやすさ</p>
+          <h1>表示設定</h1>
+        </div>
+      </header>
+      <p className="soft-text">長く見ても疲れにくいように、配色と文字サイズを選べます。</p>
+      {flash && <div className="success-message">{flash}</div>}
+
+      <section className="section-block data-card">
+        <h2>配色テーマ</h2>
+        <p className="soft-text">標準は落ち着いた緑系、やわらかめは明るく穏やか、くっきりは文字と境界を見やすくします。</p>
+        <Choice
+          label="テーマ"
+          options={displayThemes.map(displayThemeLabel)}
+          value={displayThemeLabel(form.theme)}
+          onChange={(value) => update({ ...form, theme: displayThemeFromLabel(value) })}
+        />
+      </section>
+
+      <section className="section-block data-card">
+        <h2>文字サイズ</h2>
+        <p className="soft-text">ボタンやナビゲーションが崩れにくい範囲で、アプリ全体の文字を大きくできます。</p>
+        <Choice
+          label="文字サイズ"
+          options={displayFontSizes.map(displayFontSizeLabel)}
+          value={displayFontSizeLabel(form.fontSize)}
+          onChange={(value) => update({ ...form, fontSize: displayFontSizeFromLabel(value) })}
+        />
+      </section>
+
+      <section className="section-block">
+        <h2>表示の確認</h2>
+        <div className="summary-list">
+          <Metric label="テーマ" value={displayThemeLabel(form.theme)} />
+          <Metric label="文字" value={displayFontSizeLabel(form.fontSize)} />
+        </div>
+        <div className="notice compact-notice">設定はこの端末のブラウザに保存され、次回起動時も反映されます。</div>
       </section>
     </section>
   );
@@ -1704,6 +1811,7 @@ function DataManagement({
   privacySettings,
   habitSettings,
   reminderDismissals,
+  displaySettings,
   flash,
   onImportRequest,
   onDeleteAllRequest,
@@ -1716,6 +1824,7 @@ function DataManagement({
   privacySettings: PrivacySettings;
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
+  displaySettings: DisplaySettings;
   flash: string;
   onImportRequest: (backup: BackupData) => void;
   onDeleteAllRequest: () => void;
@@ -1739,6 +1848,7 @@ function DataManagement({
     privacySettings: toBackupPrivacySettings(privacySettings),
     habitSettings,
     reminderDismissals,
+    displaySettings,
   };
 
   const handleImport = async (file: File | undefined) => {
@@ -1845,7 +1955,7 @@ function DataManagement({
 
       <section className="section-block data-card">
         <h2>JSONバックアップ</h2>
-        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、プライバシー設定、習慣サポート設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。</p>
+        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、プライバシー設定、習慣サポート設定、表示設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。</p>
         <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
       </section>
 
@@ -3226,26 +3336,33 @@ function ScoreField({ label, value, onChange }: { label: string; value: number |
 
 function Choice({ label, options, value, onChange }: { label: string; options: string[]; value: string; onChange: (value: string) => void }) {
   return (
-    <div className="field">
-      <span>{label}</span>
+    <fieldset className="field choice-field">
+      <legend>{label}</legend>
       <div className="chip-grid">
         {options.map((option) => (
-          <button className={value === option ? "chip selected" : "chip"} key={option} onClick={() => onChange(option)} type="button">
+          <button
+            aria-pressed={value === option}
+            className={value === option ? "chip selected" : "chip"}
+            key={option}
+            onClick={() => onChange(option)}
+            type="button"
+          >
             {option}
           </button>
         ))}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
 function MultiChoice({ label, options, values, onChange }: { label: string; options: string[]; values: string[]; onChange: (values: string[]) => void }) {
   return (
-    <div className="field">
-      <span>{label}</span>
+    <fieldset className="field choice-field">
+      <legend>{label}</legend>
       <div className="chip-grid">
         {options.map((option) => (
           <button
+            aria-pressed={values.includes(option)}
             className={values.includes(option) ? "chip selected" : "chip"}
             key={option}
             onClick={() => onChange(values.includes(option) ? values.filter((value) => value !== option) : [...values, option])}
@@ -3255,7 +3372,7 @@ function MultiChoice({ label, options, values, onChange }: { label: string; opti
           </button>
         ))}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -3816,7 +3933,7 @@ function firstKey(items: [string, number][]) {
 function navGroup(screen: Screen) {
   if (screen === "daily" || screen === "sudden" || screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report") return "review";
-  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit") return "menu";
+  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
   return screen;
 }
 
@@ -4011,6 +4128,46 @@ function clampWeeklyGoal(value: number) {
   return Math.min(7, Math.max(1, Math.round(value)));
 }
 
+function defaultDisplaySettings(): DisplaySettings {
+  return {
+    theme: "standard",
+    fontSize: "standard",
+    updatedAt: nowIso(),
+  };
+}
+
+function normalizeDisplaySettings(settings?: Partial<DisplaySettings>): DisplaySettings {
+  return {
+    theme: displayThemes.includes(settings?.theme as DisplayTheme) ? (settings?.theme as DisplayTheme) : "standard",
+    fontSize: displayFontSizes.includes(settings?.fontSize as DisplayFontSize) ? (settings?.fontSize as DisplayFontSize) : "standard",
+    updatedAt: settings?.updatedAt || nowIso(),
+  };
+}
+
+function displayThemeLabel(theme: DisplayTheme) {
+  if (theme === "soft") return "やわらかめ";
+  if (theme === "clear") return "くっきり";
+  return "標準";
+}
+
+function displayThemeFromLabel(label: string): DisplayTheme {
+  if (label === "やわらかめ") return "soft";
+  if (label === "くっきり") return "clear";
+  return "standard";
+}
+
+function displayFontSizeLabel(size: DisplayFontSize) {
+  if (size === "large") return "大きめ";
+  if (size === "xlarge") return "さらに大きめ";
+  return "標準";
+}
+
+function displayFontSizeFromLabel(label: string): DisplayFontSize {
+  if (label === "大きめ") return "large";
+  if (label === "さらに大きめ") return "xlarge";
+  return "standard";
+}
+
 function normalizeAutoLock(value: unknown): AutoLockMinutes {
   return [1, 5, 15, 30, 0].includes(value as number) ? (value as AutoLockMinutes) : 5;
 }
@@ -4072,6 +4229,7 @@ function normalizeBackupData(data: unknown): BackupData {
       privacySettings: toBackupPrivacySettings(defaultPrivacySettings()),
       habitSettings: defaultHabitSettings(),
       reminderDismissals: [],
+      displaySettings: defaultDisplaySettings(),
     };
   }
 
@@ -4085,6 +4243,7 @@ function normalizeBackupData(data: unknown): BackupData {
     privacySettings?: BackupPrivacySettings;
     habitSettings?: Partial<HabitSettings>;
     reminderDismissals?: Partial<ReminderDismissal>[];
+    displaySettings?: Partial<DisplaySettings>;
     daily?: Partial<DailyRecord>[];
     sudden?: Partial<SuddenLog>[];
   };
@@ -4111,6 +4270,7 @@ function normalizeBackupData(data: unknown): BackupData {
     } : toBackupPrivacySettings(defaultPrivacySettings()),
     habitSettings: normalizeHabitSettings(source.habitSettings),
     reminderDismissals: Array.isArray(source.reminderDismissals) ? source.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[] : [],
+    displaySettings: normalizeDisplaySettings(source.displaySettings),
   };
 }
 
