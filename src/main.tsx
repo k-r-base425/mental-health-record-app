@@ -113,7 +113,7 @@ type Insight = {
   group: "daily" | "sudden" | "selfcare";
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "data" | "selfcare" | "consultation" | "privacy" | "menu";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "all" };
@@ -137,6 +137,8 @@ const selfCarePlansStorageKey = "selfCarePlans";
 const selfCareLogsStorageKey = "selfCareLogs";
 const consultationNotesStorageKey = "consultationNotes";
 const privacySettingsStorageKey = "privacySettings";
+const onboardingCompletedStorageKey = "onboardingCompleted";
+const onboardingCompletedAtStorageKey = "onboardingCompletedAt";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -171,6 +173,29 @@ const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo"
   { title: "食事を整える", category: "習慣を見直す", memo: "食べやすいものを選ぶ" },
   { title: "カフェインを控えめにする", category: "習慣を見直す", memo: "合うかどうか記録で見ていく" },
   { title: "何もしない時間を作る", category: "休む", memo: "短い余白を作る" },
+];
+
+const onboardingSteps = [
+  {
+    title: "Self Compassへようこそ",
+    body: "Self Compassは、日々の状態や気づきを記録し、自分の傾向をふり返るためのセルフケア記録アプリです。",
+  },
+  {
+    title: "まずは今日の記録から",
+    body: "気分、不安感、睡眠、天気、生活の様子などを短く記録できます。すべてを埋める必要はありません。",
+  },
+  {
+    title: "状態の波をあとから見返せます",
+    body: "突発ログや日々の記録から、睡眠・天気・外出・セルフケアとの関係を参考情報として確認できます。",
+  },
+  {
+    title: "相談前の整理にも使えます",
+    body: "相談ノートや共有用まとめを使うと、医師・カウンセラー・支援者・AIに伝えたいことを整理しやすくなります。",
+  },
+  {
+    title: "記録はこの端末に保存されます",
+    body: "記録は現在お使いのブラウザ内に保存されます。端末変更やブラウザデータ削除に備えて、必要に応じてバックアップしてください。",
+  },
 ];
 
 function readStorage<T>(key: string): T[] {
@@ -239,6 +264,8 @@ function App() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
   const [loggingPlan, setLoggingPlan] = useState<SelfCarePlan | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(onboardingCompletedStorageKey) !== "true");
+  const [onboardingMode, setOnboardingMode] = useState<"initial" | "guide">("initial");
   const [flash, setFlash] = useState("");
 
   useEffect(() => {
@@ -454,8 +481,33 @@ function App() {
     setScreen("privacy");
   };
 
+  const openGuide = () => {
+    setFlash("");
+    setOnboardingMode("guide");
+    setShowOnboarding(true);
+  };
+
+  const openAbout = () => {
+    setFlash("");
+    setScreen("about");
+  };
+
+  const closeOnboarding = (markCompleted: boolean) => {
+    if (markCompleted) {
+      localStorage.setItem(onboardingCompletedStorageKey, "true");
+      localStorage.setItem(onboardingCompletedAtStorageKey, nowIso());
+    }
+    setShowOnboarding(false);
+    setOnboardingMode("initial");
+    setScreen("home");
+  };
+
   if (isLocked && privacySettings.isLockEnabled) {
     return <LockScreen settings={privacySettings} onUnlock={() => setIsLocked(false)} />;
+  }
+
+  if (showOnboarding) {
+    return <OnboardingGuide mode={onboardingMode} onClose={() => closeOnboarding(onboardingMode === "initial")} />;
   }
 
   return (
@@ -557,8 +609,11 @@ function App() {
             onConsultation={openConsultation}
             onData={openData}
             onPrivacy={openPrivacy}
+            onGuide={openGuide}
+            onAbout={openAbout}
           />
         )}
+        {screen === "about" && <AboutScreen />}
         {screen === "data" && (
           <DataManagement
             dailyRecords={dailyRecords}
@@ -662,6 +717,42 @@ function LockScreen({ settings, onUnlock }: { settings: PrivacySettings; onUnloc
   );
 }
 
+function OnboardingGuide({ mode, onClose }: { mode: "initial" | "guide"; onClose: () => void }) {
+  const [step, setStep] = useState(0);
+  const current = onboardingSteps[step];
+  const isLast = step === onboardingSteps.length - 1;
+
+  return (
+    <main className="onboarding-screen">
+      <section className="onboarding-card">
+        <p className="eyebrow">{mode === "initial" ? "はじめに" : "使い方ガイド"}</p>
+        <div className="step-indicator" aria-label={`ステップ ${step + 1} / ${onboardingSteps.length}`}>
+          {onboardingSteps.map((item, index) => (
+            <span className={index === step ? "active" : ""} key={item.title} />
+          ))}
+        </div>
+        <h1>{current.title}</h1>
+        <p className="onboarding-text">{current.body}</p>
+        {isLast && (
+          <div className="notice compact-notice">
+            このアプリは診断・治療・服薬指示を行いません。記録は相談時の参考情報として使えます。
+          </div>
+        )}
+        <div className="onboarding-actions">
+          <button className="secondary-btn no-margin" onClick={() => (step > 0 ? setStep(step - 1) : onClose())}>
+            {step > 0 ? "戻る" : mode === "initial" ? "スキップ" : "閉じる"}
+          </button>
+          {isLast ? (
+            <button className="primary-btn" onClick={onClose}>{mode === "initial" ? "はじめる" : "ホームへ戻る"}</button>
+          ) : (
+            <button className="primary-btn" onClick={() => setStep(step + 1)}>次へ</button>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function PrivacyScreen({ settings, flash, onSave, onLock }: { settings: PrivacySettings; flash: string; onSave: (settings: PrivacySettings) => void; onLock: () => void }) {
   const [newPasscode, setNewPasscode] = useState("");
   const [currentPasscode, setCurrentPasscode] = useState("");
@@ -741,7 +832,7 @@ function PrivacyScreen({ settings, flash, onSave, onLock }: { settings: PrivacyS
         </div>
       </header>
       <p className="soft-text">記録内容を開いたままにしないための簡易ロックや、画面表示の保護を設定できます。</p>
-      <div className="notice">このロックは記録内容を見えにくくするための簡易機能です。端末やブラウザ全体を保護するものではありません。</div>
+      <div className="notice">このロックは、記録内容をすぐに見えないようにするための簡易的な保護機能です。完全な暗号化や医療情報レベルの保護ではありません。</div>
       {flash && <div className="success-message">{flash}</div>}
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
@@ -850,6 +941,7 @@ function Home({
   const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs)[0];
   const openNotes = consultationNotes.filter((note) => note.status !== "done");
   const latestNote = [...consultationNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  const showFirstUseHint = dailyRecords.length === 0 && suddenLogs.length === 0;
 
   return (
     <section>
@@ -862,6 +954,11 @@ function Home({
         このアプリは診断・治療・服薬指示を行いません。医療機関や専門家への相談の代わりにはなれません。
       </div>
       {flash && <div className="success-message">{flash}</div>}
+      {showFirstUseHint && (
+        <div className="notice compact-notice">
+          まずは今日の記録から始められます。すべてを入力しなくても大丈夫です。
+        </div>
+      )}
 
       <section className="status-panel">
         <div>
@@ -1006,7 +1103,19 @@ function ReviewHub({
   );
 }
 
-function MenuScreen({ onConsultation, onData, onPrivacy }: { onConsultation: () => void; onData: () => void; onPrivacy: () => void }) {
+function MenuScreen({
+  onConsultation,
+  onData,
+  onPrivacy,
+  onGuide,
+  onAbout,
+}: {
+  onConsultation: () => void;
+  onData: () => void;
+  onPrivacy: () => void;
+  onGuide: () => void;
+  onAbout: () => void;
+}) {
   return (
     <section>
       <header className="page-head">
@@ -1023,6 +1132,8 @@ function MenuScreen({ onConsultation, onData, onPrivacy }: { onConsultation: () 
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談ノート</button>
           <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
           <button className="secondary-btn no-margin" onClick={onPrivacy}>プライバシー設定</button>
+          <button className="secondary-btn no-margin" onClick={onGuide}>使い方ガイド</button>
+          <button className="secondary-btn no-margin" onClick={onAbout}>アプリについて</button>
         </div>
       </section>
 
@@ -1032,9 +1143,58 @@ function MenuScreen({ onConsultation, onData, onPrivacy }: { onConsultation: () 
       </section>
 
       <section className="section-block">
-        <h2>アプリについて</h2>
-        <p className="soft-text">Self Compassは、日々の状態、突発ログ、セルフケア、相談メモを自分のために整理するセルフ記録アプリです。</p>
-        <p className="soft-text">このアプリは診断・治療・服薬指示を行いません。記録は医師や専門家に相談するための参考情報として利用してください。</p>
+        <h2>サポートが必要なとき</h2>
+        <p className="soft-text">命に関わる可能性があると感じるときや、一人で抱えるのが難しいと感じるときは、すぐに119番、近くの救急外来、または信頼できる人に連絡してください。このアプリは医療機関や専門家の支援を代わりに行うものではありません。</p>
+      </section>
+    </section>
+  );
+}
+
+function AboutScreen() {
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">Self Compass</p>
+          <h1>アプリについて</h1>
+        </div>
+      </header>
+
+      <section className="section-block">
+        <h2>Self Compassとは</h2>
+        <p className="soft-text">Self Compassは、自分の状態を記録し、状態の波や整いやすい行動をふり返るためのセルフケア記録アプリです。</p>
+      </section>
+
+      <section className="section-block">
+        <h2>このアプリでできること</h2>
+        <ul className="soft-list">
+          <li>日々の状態を記録する</li>
+          <li>突発的な状態の変化を記録する</li>
+          <li>記録から見える傾向を確認する</li>
+          <li>セルフケアの候補を管理する</li>
+          <li>相談前のメモを整理する</li>
+          <li>データをバックアップする</li>
+        </ul>
+      </section>
+
+      <section className="section-block">
+        <h2>このアプリでできないこと</h2>
+        <ul className="soft-list">
+          <li>診断すること</li>
+          <li>治療方針を決めること</li>
+          <li>薬やサプリの服用を指示すること</li>
+          <li>医師や専門家の代わりになること</li>
+        </ul>
+      </section>
+
+      <section className="section-block">
+        <h2>データ保存について</h2>
+        <p className="soft-text">記録は現在お使いのブラウザ内に保存されます。共有URLを開いた人同士で記録が共有されるわけではありません。端末やブラウザが変わると記録は引き継がれないため、必要に応じてデータ管理からJSONバックアップを保存してください。</p>
+      </section>
+
+      <section className="section-block">
+        <h2>サポートが必要なとき</h2>
+        <p className="soft-text">命に関わる可能性があると感じるときや、一人で抱えるのが難しいと感じるときは、すぐに119番、近くの救急外来、または信頼できる人に連絡してください。このアプリは医療機関や専門家の支援を代わりに行うものではありません。</p>
       </section>
     </section>
   );
@@ -2665,7 +2825,7 @@ function firstKey(items: [string, number][]) {
 function navGroup(screen: Screen) {
   if (screen === "daily" || screen === "sudden" || screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report") return "review";
-  if (screen === "consultation" || screen === "data" || screen === "privacy") return "menu";
+  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about") return "menu";
   return screen;
 }
 
