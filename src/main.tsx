@@ -49,7 +49,7 @@ type SuddenLog = {
 type SelfCareCategory = "体を整える" | "環境を整える" | "思考を整理する" | "人とつながる" | "休む" | "習慣を見直す";
 type SelfCareResult = "少し整った" | "変化は少なめ" | "今は合わなかった" | "後で振り返る";
 type IfThenCategory = SelfCareCategory | "記録する" | "その他";
-type IfThenEase = "すぐできそう" | "少し準備が必要" | "今は難しいかも";
+type IfThenEase = "すぐできそう" | "少し準備が必要" | "今は小さくした方がよさそう";
 
 type SelfCarePlan = {
   id: string;
@@ -84,6 +84,8 @@ type IfThenPlan = {
   createdAt: string;
   updatedAt: string;
 };
+
+type IfThenPrefill = Partial<Pick<IfThenPlan, "title" | "ifText" | "thenText" | "category" | "relatedStateTags" | "relatedThoughtTags" | "memo">>;
 
 type IfThenLog = {
   id: string;
@@ -255,7 +257,7 @@ const consultationTargets: ConsultationTarget[] = ["doctor", "counselor", "famil
 const consultationStatuses: ConsultationStatus[] = ["draft", "planned", "done", "pending"];
 const selfCareCategories: SelfCareCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "習慣を見直す"];
 const ifThenCategories: IfThenCategory[] = ["体を整える", "環境を整える", "思考を整理する", "人とつながる", "休む", "記録する", "その他"];
-const ifThenEaseOptions: IfThenEase[] = ["すぐできそう", "少し準備が必要", "今は難しいかも"];
+const ifThenEaseOptions: IfThenEase[] = ["すぐできそう", "少し準備が必要", "今は小さくした方がよさそう"];
 const reminderTimeTypes: ReminderTimeType[] = ["朝", "昼", "夕方", "夜", "自由入力"];
 const weeklyGoalTypes: WeeklyGoalType[] = ["週に1回", "週に3回", "できる日に記録する", "カスタム"];
 const displayThemes: DisplayTheme[] = ["standard", "soft", "clear"];
@@ -294,22 +296,12 @@ const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo"
   { title: "何もしない時間を作る", category: "休む", memo: "短い余白を作る" },
 ];
 
-const ifThenTemplates: Array<Pick<IfThenPlan, "title" | "ifText" | "thenText" | "category" | "relatedStateTags" | "relatedThoughtTags" | "ease" | "memo">> = [
-  { title: "朝の水", ifText: "朝起きて体が重かったら", thenText: "コップ1杯の水を飲む", category: "体を整える", relatedStateTags: ["身体の重さ"], relatedThoughtTags: [], ease: "すぐできそう", memo: "小さく始めるための候補です" },
-  { title: "3分だけ歩く", ifText: "日中にそわそわしたら", thenText: "外に出て3分だけ歩く", category: "体を整える", relatedStateTags: ["そわそわ"], relatedThoughtTags: [], ease: "少し準備が必要", memo: "短い時間で試せます" },
-  { title: "寝る前に少し離す", ifText: "寝る前に考えが止まらなかったら", thenText: "照明を落としてスマホを少し離す", category: "休む", relatedStateTags: ["考えすぎ"], relatedThoughtTags: ["先のことを考えすぎる"], ease: "少し準備が必要", memo: "眠る前の刺激を少し減らす候補です" },
-  { title: "ひとつ片づける", ifText: "部屋が散らかって気になるなら", thenText: "目の前のものを1つだけ片づける", category: "環境を整える", relatedStateTags: [], relatedThoughtTags: [], ease: "すぐできそう", memo: "全部ではなく、ひとつだけにします" },
-  { title: "机を1分整える", ifText: "作業に集中しにくいなら", thenText: "机の上を1分だけ整える", category: "環境を整える", relatedStateTags: ["焦り"], relatedThoughtTags: [], ease: "すぐできそう", memo: "始める前の小さな準備です" },
-  { title: "事実と想像を分ける", ifText: "自分を責める考えが出たら", thenText: "事実と想像を1つずつ分けて書く", category: "思考を整理する", relatedStateTags: ["自分を責める感覚"], relatedThoughtTags: ["自分を責める"], ease: "すぐできそう", memo: "責めるためではなく、距離を取るための候補です" },
-  { title: "別の可能性を1つ", ifText: "悪い方に決めつけそうになったら", thenText: "別の可能性を1つだけ書く", category: "思考を整理する", relatedStateTags: [], relatedThoughtTags: ["悪い方に決めつける"], ease: "すぐできそう", memo: "無理に前向きにしなくても大丈夫です" },
-  { title: "すべきメモ", ifText: "「〜すべき」が強くなったら", thenText: "「本当に今やる必要があるか」を一度メモする", category: "思考を整理する", relatedStateTags: [], relatedThoughtTags: ["すべきが強くなる"], ease: "すぐできそう", memo: "急いで決めすぎないためのメモです" },
-  { title: "確認と想像を分ける", ifText: "相手の気持ちを読みすぎていると感じたら", thenText: "確認できていることと想像を分ける", category: "思考を整理する", relatedStateTags: [], relatedThoughtTags: ["相手の気持ちを読みすぎる"], ease: "すぐできそう", memo: "分かっていることを少し整理します" },
-  { title: "短く連絡する", ifText: "一人で抱え込みそうなら", thenText: "信頼できる人に短く連絡する", category: "人とつながる", relatedStateTags: ["ひとり感"], relatedThoughtTags: [], ease: "少し準備が必要", memo: "一文だけでも大丈夫です" },
-  { title: "一文だけ送る", ifText: "話すのが難しいなら", thenText: "「今少しだけ聞いてほしい」と一文だけ送る", category: "人とつながる", relatedStateTags: ["ひとり感"], relatedThoughtTags: [], ease: "少し準備が必要", memo: "言葉を短くしておきます" },
-  { title: "5分横になる", ifText: "何も進まないと感じたら", thenText: "5分だけ横になる", category: "休む", relatedStateTags: ["動きにくさ"], relatedThoughtTags: [], ease: "すぐできそう", memo: "休む選択肢を先に置いておきます" },
-  { title: "今日は結論を出さない", ifText: "疲れが強いと感じたら", thenText: "今日は結論を出さないと決める", category: "休む", relatedStateTags: ["身体の重さ"], relatedThoughtTags: ["早く答えを出そうとする"], ease: "すぐできそう", memo: "先送りではなく、休むための区切りです" },
-  { title: "突発ログに短く残す", ifText: "状態の波が大きかったら", thenText: "突発ログを短く残す", category: "記録する", relatedStateTags: ["不安感", "そわそわ"], relatedThoughtTags: [], ease: "すぐできそう", memo: "全部書かなくても大丈夫です" },
-  { title: "思考メモに置く", ifText: "同じ考えが何度も出たら", thenText: "思考メモに一度置いておく", category: "記録する", relatedStateTags: ["考えすぎ"], relatedThoughtTags: ["先のことを考えすぎる"], ease: "すぐできそう", memo: "頭の外に置くための候補です" },
+const ifThenExamples = [
+  { ifText: "朝起きて体が重かったら", thenText: "カーテンを開けて、コップ1杯の水を飲む" },
+  { ifText: "LINEの後に考えすぎていたら", thenText: "事実と想像を1つずつ分けてメモする" },
+  { ifText: "曇りの日に気分が沈みやすかったら", thenText: "外の光を3分だけ浴びる" },
+  { ifText: "自分を責める考えが出たら", thenText: "友人に言うなら何と言うかを1行だけ書く" },
+  { ifText: "寝る前に考えが止まらなかったら", thenText: "今日は結論を出さないとメモして、画面を閉じる" },
 ];
 
 const draftDefinitions = [
@@ -491,6 +483,7 @@ function App() {
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
   const [editingThought, setEditingThought] = useState<ThoughtNote | null>(null);
   const [prefillThought, setPrefillThought] = useState<Partial<ThoughtNote> | null>(null);
+  const [prefillIfThen, setPrefillIfThen] = useState<IfThenPrefill | null>(null);
   const [newDailyDate, setNewDailyDate] = useState<string | null>(null);
   const [newSuddenDate, setNewSuddenDate] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
@@ -627,6 +620,7 @@ function App() {
     localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(next));
     localStorage.removeItem(ifThenDraftKey);
     setActiveFormDirty(false);
+    setPrefillIfThen(null);
     setFlash(isEditing ? "If-Thenプランを更新しました" : "If-Thenプランを追加しました");
   };
 
@@ -847,9 +841,32 @@ function App() {
     setScreen("thought");
   };
 
-  const openIfThen = () => {
+  const openIfThen = (prefill?: IfThenPrefill) => {
     setFlash("");
+    setPrefillIfThen(prefill || null);
     setScreen("ifthen");
+  };
+
+  const openIfThenFromSudden = (log: SuddenLog) => {
+    const triggerText = [...log.triggers, ...log.stateTags].filter(Boolean).join("・");
+    setDetailItem(null);
+    openIfThen({
+      title: log.stateTags[0] ? `${log.stateTags[0]}のときの小さな行動` : "状態の波に合わせるプラン",
+      ifText: triggerText ? `${triggerText}のあとに状態の波が出たら` : "状態の波が出たら",
+      category: "記録する",
+      relatedStateTags: log.stateTags,
+      memo: log.thoughts ? `突発ログから: ${log.thoughts}` : "",
+    });
+  };
+
+  const openIfThenFromThought = (note: ThoughtNote) => {
+    openIfThen({
+      title: note.thoughtTags[0] ? `${note.thoughtTags[0]}が出たときの小さな行動` : "考えを整理するプラン",
+      ifText: note.situation || note.thought || "この考え方が出たら",
+      category: "思考を整理する",
+      relatedThoughtTags: note.thoughtTags,
+      memo: note.thought ? `思考メモから: ${note.thought}` : "",
+    });
   };
 
   const openThoughtFromSudden = (log: SuddenLog) => {
@@ -982,6 +999,7 @@ function App() {
               setScreen("sudden");
             }}
             onCreateThoughtFromSudden={openThoughtFromSudden}
+            onCreateIfThenFromSudden={openIfThenFromSudden}
             onDeleteDaily={(id) => setPendingDelete({ kind: "daily", id })}
             onDeleteSudden={(id) => setPendingDelete({ kind: "sudden", id })}
           />
@@ -1066,7 +1084,7 @@ function App() {
             onDelete={(id) => setPendingDelete({ kind: "thought", id })}
             ifThenPlans={ifThenPlans}
             onIfThenDone={setLoggingIfThen}
-            onCreateIfThen={openIfThen}
+            onCreateIfThen={openIfThenFromThought}
             onDirtyChange={setActiveFormDirty}
           />
         )}
@@ -1074,6 +1092,7 @@ function App() {
           <IfThenScreen
             plans={ifThenPlans}
             logs={ifThenLogs}
+            prefill={prefillIfThen}
             flash={flash}
             privateDisplayMode={privacySettings.privateDisplayMode}
             onSavePlan={saveIfThenPlan}
@@ -1143,7 +1162,7 @@ function App() {
           />
         )}
       </main>
-      {detailItem && <DetailModal item={detailItem} onClose={() => setDetailItem(null)} />}
+      {detailItem && <DetailModal item={detailItem} onClose={() => setDetailItem(null)} onCreateIfThen={openIfThenFromSudden} />}
       {pendingDelete && (
         <ConfirmDeleteModal
           onCancel={() => setPendingDelete(null)}
@@ -1591,7 +1610,7 @@ function Home({
 
       <section className="section-block home-card home-card-action">
         <h2>今日の小さな一手</h2>
-        <p className="soft-text">今の状態に合わせて試せる小さな行動です。合わなかった日があっても大丈夫です。</p>
+        <p className="soft-text">今の状態に合わせて試せる小さな行動です。合いそうなものはIf-Thenプランとして続けられます。</p>
         {todayPlans.length === 0 && todayIfThenPlans.length === 0 ? (
           <p className="soft-text">セルフケアやIf-Thenプランから、自分に合いそうな行動を追加できます。</p>
         ) : (
@@ -1621,7 +1640,7 @@ function Home({
 
       <section className="section-block home-card home-card-ifthen">
         <h2>If-Thenプラン</h2>
-        <p className="soft-text">「もし〜が起きたら、〜する」を決めておけます。</p>
+        <p className="soft-text">きっかけに合わせて、小さな行動を先に決めておけます。</p>
         <div className="summary-list">
           <Metric label="有効なプラン" value={privateDisplayMode ? "プランあり" : `${ifThenPlans.filter((plan) => plan.isActive).length}件`} />
           <Metric label="実行ログ" value={privateDisplayMode ? "記録あり" : `${ifThenLogs.length}回`} />
@@ -2709,6 +2728,7 @@ function SelfCareLogModal({ plan, onCancel, onSave }: { plan: SelfCarePlan; onCa
 function IfThenScreen({
   plans,
   logs,
+  prefill,
   flash,
   privateDisplayMode,
   onSavePlan,
@@ -2720,6 +2740,7 @@ function IfThenScreen({
 }: {
   plans: IfThenPlan[];
   logs: IfThenLog[];
+  prefill: IfThenPrefill | null;
   flash: string;
   privateDisplayMode: boolean;
   onSavePlan: (plan: IfThenPlan) => void;
@@ -2729,7 +2750,7 @@ function IfThenScreen({
   onCreateSelfCare: (plan: IfThenPlan) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const [form, setForm] = useState<IfThenPlan>(createIfThenDraft());
+  const [form, setForm] = useState<IfThenPlan>(() => createIfThenDraft(prefill || undefined));
   const [editing, setEditing] = useState<IfThenPlan | null>(null);
   const [detail, setDetail] = useState<IfThenPlan | null>(null);
   const [message, setMessage] = useState("");
@@ -2737,16 +2758,17 @@ function IfThenScreen({
   const [draftStatus, setDraftStatus] = useState("");
   const [showRestore, setShowRestore] = useState(() => Boolean(readDraft<IfThenPlan>(ifThenDraftKey)));
   const [isSaving, setIsSaving] = useState(false);
-  const groupedTemplates = ifThenCategories.map((category) => ({
-    category,
-    items: ifThenTemplates.filter((template) => template.category === category),
-  })).filter((group) => group.items.length);
   const sortedPlans = [...plans].sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.updatedAt.localeCompare(a.updatedAt));
 
   useEffect(() => {
     onDirtyChange(isDirty);
     return () => onDirtyChange(false);
   }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!prefill || editing || isDirty) return;
+    setForm(createIfThenDraft(prefill));
+  }, [prefill, editing, isDirty]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -2795,16 +2817,6 @@ function IfThenScreen({
     setDraftStatus("");
   };
 
-  const addTemplate = (template: Pick<IfThenPlan, "title" | "ifText" | "thenText" | "category" | "relatedStateTags" | "relatedThoughtTags" | "ease" | "memo">) => {
-    onSavePlan(normalizeIfThenPlan({
-      ...template,
-      id: newId(),
-      isActive: true,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    }));
-  };
-
   const save = () => {
     if (isSaving) return;
     if (!form.title.trim() || !form.ifText.trim() || !form.thenText.trim()) {
@@ -2847,36 +2859,57 @@ function IfThenScreen({
       {message && <div className="error-message">{message}</div>}
 
       <section className="section-block data-card">
-        <h2>使い方</h2>
-        <p className="soft-text">If-Thenプランは、状態の波や思考のくせなどの「きっかけ」に対して、あらかじめ小さな行動を決めておく習慣化の方法です。</p>
-        <p className="soft-text">記録からきっかけに気づく → If-Thenで小さな行動を作る → 実行ログで合うかを見る → 合いそうなら続けやすい形にする、という流れで使えます。</p>
-        <div className="step-list">
-          <div><strong>1. きっかけを見つける</strong><span>例：曇りの日に不安感が高い、LINEの後に考えすぎる</span></div>
-          <div><strong>2. 小さな行動を決める</strong><span>例：もしLINEの後に考え続けたら、事実と想像を分けてメモする</span></div>
-          <div><strong>3. 実行して記録する</strong><span>「実行した」ボタンで、感じ方を短く残せます</span></div>
-          <div><strong>4. 合うかふり返る</strong><span>「少し整った」が多ければ、続ける候補にできます</span></div>
-          <div><strong>5. 続けやすい形にする</strong><span>合わないプランは、もっと小さくしたり別の行動に変えたりできます</span></div>
-        </div>
-        <p className="soft-text">例：もし朝に不安感が強かったら、カーテンを開けて5分だけ光を浴びる。</p>
-        <div className="notice compact-notice">この機能は診断や治療ではなく、自分に合う整え方を見つけるためのセルフケア補助です。</div>
+        <h2>If-Thenプランとは</h2>
+        <p className="soft-text">If-Thenプランは、「もし〇〇が起きたら、△△する」という形で、きっかけと小さな行動を先に決めておく習慣化の方法です。</p>
+        <p className="soft-text">記録からきっかけを見つける → 小さな行動を決める → 実行して記録する → 合いそうなら続ける、という流れで使えます。</p>
+        <p className="soft-text">合わないプランは、無理に続けなくて大丈夫です。小さくしたり、別の行動に変えたりできます。</p>
+        <button className="secondary-btn" onClick={() => document.getElementById("ifthen-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}>新しく作る</button>
       </section>
 
       <section className="section-block data-card">
-        <h2>{editing ? "If-Thenプランを編集" : "自分で作る"}</h2>
+        <h2>使い方ステップ</h2>
+        <div className="step-list">
+          <div><strong>1. きっかけを見つける</strong><span>記録やふり返りから、状態の波が出やすい場面を見つけます。例：曇りの日に不安感が高い / LINEの後に考えすぎる / 寝る前に頭の中が忙しくなる</span></div>
+          <div><strong>2. 小さな行動を決める</strong><span>そのきっかけが起きたときにできそうな行動を、先に決めておきます。例：もしLINEの後に考えすぎたら、事実と想像を1つずつ分けて書く</span></div>
+          <div><strong>3. 実行して記録する</strong><span>実行できたら、整いやすさと実行しやすさを10段階で残します。例：整いやすさ 7/10、実行しやすさ 8/10</span></div>
+          <div><strong>4. 合うかふり返る</strong><span>何度か試して、整いやすさと実行しやすさの両方が高ければ、続ける候補にできます。</span></div>
+          <div><strong>5. 習慣として残す</strong><span>合いそうなものは、今日の小さな一手やマイプランとして続けられます。</span></div>
+        </div>
+        <div className="notice compact-notice">この機能は診断や治療ではなく、自分に合う整え方を見つけるためのセルフケア補助です。</div>
+      </section>
+
+      <section className="section-block data-card example-card">
+        <h2>作り方の例</h2>
+        <div className="ifthen-example-list">
+          {ifThenExamples.map((example) => (
+            <div className="ifthen-flow" key={example.ifText}>
+              <p><span>もし</span>{example.ifText}</p>
+              <p><span>そのとき</span>{example.thenText}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="section-block data-card" id="ifthen-form">
+        <h2>{editing ? "If-Thenプランを編集" : "新しいIf-Thenプランを作る"}</h2>
         {!editing && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
         {draftStatus && <p className="draft-status">{draftStatus}</p>}
+        <TextArea label="もし" helper="きっかけ・場面・状態を書きます" value={form.ifText} onChange={(ifText) => updateForm({ ...form, ifText })} placeholder="例：寝る前に考えが止まらなくなったら" />
+        <TextArea label="そのとき" helper="その場でできる小さな行動を書きます" value={form.thenText} onChange={(thenText) => updateForm({ ...form, thenText })} placeholder="例：考えていることを3つだけメモして、今日は結論を出さない" />
         <label className="field">
           <span>タイトル <small>必要</small></span>
-          <input value={form.title} onChange={(event) => updateForm({ ...form, title: event.target.value })} placeholder="例：朝の不安感に備える" />
+          <small>あとから見返しやすい名前をつけます</small>
+          <input value={form.title} onChange={(event) => updateForm({ ...form, title: event.target.value })} placeholder="例：寝る前の考えすぎ対策" />
         </label>
-        <TextArea label="もし" helper="きっかけ・状況を短く書けます" value={form.ifText} onChange={(ifText) => updateForm({ ...form, ifText })} placeholder="例：朝起きて不安感が強かったら" />
-        <TextArea label="そのとき" helper="小さな行動をひとつ置いておけます" value={form.thenText} onChange={(thenText) => updateForm({ ...form, thenText })} placeholder="例：カーテンを開けて5分だけ光を浴びる" />
         <Choice label="カテゴリ" options={ifThenCategories} value={form.category} onChange={(category) => updateForm({ ...form, category: category as IfThenCategory })} />
+        <p className="soft-text">カテゴリは、あとから探しやすくするための目印です。</p>
         <MultiChoice label="関連する状態タグ" options={stateTagOptions} values={form.relatedStateTags} onChange={(relatedStateTags) => updateForm({ ...form, relatedStateTags })} />
+        <p className="soft-text">どんな状態のときに使うかを選べます。</p>
         <MultiChoice label="関連する思考タグ" options={thoughtTagOptions} values={form.relatedThoughtTags} onChange={(relatedThoughtTags) => updateForm({ ...form, relatedThoughtTags })} />
-        <Choice label="実行しやすさ" options={ifThenEaseOptions} value={form.ease} onChange={(ease) => updateForm({ ...form, ease: ease as IfThenEase })} />
+        <p className="soft-text">どんな考え方のくせが出たときに使うかを選べます。</p>
+        <Choice label="実行しやすさの見込み" options={ifThenEaseOptions} value={form.ease} onChange={(ease) => updateForm({ ...form, ease: ease as IfThenEase })} />
         <Choice label="状態" options={["有効", "一時停止"]} value={form.isActive ? "有効" : "一時停止"} onChange={(value) => updateForm({ ...form, isActive: value === "有効" })} />
-        <TextArea label="メモ" helper="任意。自分向けの補足を書けます" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} />
+        <TextArea label="メモ" helper="任意。自分向けの補足を書けます" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} placeholder="例：まずは1分でできる形にする" />
         <div className="data-actions">
           <button className="primary-btn" disabled={isSaving} onClick={save}>{isSaving ? "保存しています" : editing ? "更新する" : "追加する"}</button>
           {editing && <button className="secondary-btn no-margin" onClick={resetForm}>編集をやめる</button>}
@@ -2884,30 +2917,14 @@ function IfThenScreen({
       </section>
 
       <section className="section-block">
-        <h2>テンプレートから追加</h2>
-        {groupedTemplates.map((group) => (
-          <div className="candidate-group" key={group.category}>
-            <h3>{group.category}</h3>
-            <div className="record-list">
-              {group.items.map((template) => (
-                <article className="candidate-card ifthen-card" key={`${template.ifText}-${template.thenText}`}>
-                  <div>
-                    <strong>{template.title}</strong>
-                    <p><span>もし</span> {template.ifText}</p>
-                    <p><span>そのとき</span> {template.thenText}</p>
-                  </div>
-                  <button className="secondary-action" onClick={() => addTemplate(template)}>追加</button>
-                </article>
-              ))}
-            </div>
-          </div>
-        ))}
-      </section>
-
-      <section className="section-block">
-        <h2>プラン一覧</h2>
+        <h2>作成済みプラン一覧</h2>
         {sortedPlans.length === 0 ? (
-          <p className="soft-text">まだIf-Thenプランはありません。テンプレートから小さく始められます。</p>
+          <div className="empty-box">
+            <strong>まだIf-Thenプランはありません。</strong>
+            <p>まずは、最近の記録から1つだけ「きっかけ」を選んでみましょう。</p>
+            <p>例：もし寝る前に考えが止まらなかったら、今日は結論を出さないとメモする。</p>
+            <button className="secondary-btn no-margin" onClick={() => document.getElementById("ifthen-form")?.scrollIntoView({ behavior: "smooth", block: "start" })}>If-Thenプランを作る</button>
+          </div>
         ) : (
           <div className="record-list">
             {sortedPlans.map((plan) => {
@@ -2956,7 +2973,8 @@ function IfThenScreen({
       </section>
 
       <section className="section-block">
-        <h2>最近の実行ログ</h2>
+        <h2>実行記録・習慣化候補</h2>
+        <p className="soft-text">整いやすさと実行しやすさを見ながら、続けやすい形を探せます。記録上の参考情報です。</p>
         {logs.length === 0 ? (
           <p className="soft-text">まだ実行ログはありません。</p>
         ) : (
@@ -3359,7 +3377,7 @@ function ThoughtNotesScreen({
   onDelete: (id: string) => void;
   ifThenPlans: IfThenPlan[];
   onIfThenDone: (plan: IfThenPlan) => void;
-  onCreateIfThen: () => void;
+  onCreateIfThen: (note: ThoughtNote) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const createBlank = (): ThoughtNote => {
@@ -3505,7 +3523,7 @@ function ThoughtNotesScreen({
         ) : (
           <p className="soft-text">一致するプランがない場合は、思考タグをヒントに新しく作れます。</p>
         )}
-        <button className="secondary-btn" onClick={onCreateIfThen}>If-Thenプランを作る</button>
+        <button className="secondary-btn" onClick={() => onCreateIfThen(form)}>この考え方が出たとき用のIf-Thenプランを作る</button>
       </section>
 
       <section className="section-block">
@@ -3540,12 +3558,12 @@ function ThoughtNotesScreen({
         )}
       </section>
 
-      {detail && <ThoughtDetailModal note={detail} privateDisplayMode={privateDisplayMode} onClose={() => setDetail(null)} />}
+      {detail && <ThoughtDetailModal note={detail} privateDisplayMode={privateDisplayMode} onClose={() => setDetail(null)} onCreateIfThen={onCreateIfThen} />}
     </section>
   );
 }
 
-function ThoughtDetailModal({ note, privateDisplayMode, onClose }: { note: ThoughtNote; privateDisplayMode: boolean; onClose: () => void }) {
+function ThoughtDetailModal({ note, privateDisplayMode, onClose, onCreateIfThen }: { note: ThoughtNote; privateDisplayMode: boolean; onClose: () => void; onCreateIfThen: (note: ThoughtNote) => void }) {
   const hidden = privateDisplayMode ? "詳細は非表示です" : "";
   const rows = [
     ["発生日", note.date],
@@ -3578,6 +3596,15 @@ function ThoughtDetailModal({ note, privateDisplayMode, onClose }: { note: Thoug
             </div>
           ))}
         </div>
+        <button
+          className="secondary-btn"
+          onClick={() => {
+            onClose();
+            onCreateIfThen(note);
+          }}
+        >
+          この考え方が出たとき用のIf-Thenプランを作る
+        </button>
       </div>
     </div>
   );
@@ -3606,6 +3633,7 @@ function RecordsScreen({
   onEditDaily,
   onEditSudden,
   onCreateThoughtFromSudden,
+  onCreateIfThenFromSudden,
   onDeleteDaily,
   onDeleteSudden,
 }: {
@@ -3617,6 +3645,7 @@ function RecordsScreen({
   onEditDaily: (record: DailyRecord) => void;
   onEditSudden: (log: SuddenLog) => void;
   onCreateThoughtFromSudden: (log: SuddenLog) => void;
+  onCreateIfThenFromSudden: (log: SuddenLog) => void;
   onDeleteDaily: (id: string) => void;
   onDeleteSudden: (id: string) => void;
 }) {
@@ -3693,6 +3722,7 @@ function RecordsScreen({
                 <button className="secondary-action" onClick={() => onDetail({ kind: "sudden", record: log })}>詳細</button>
                 <button className="secondary-action" onClick={() => onEditSudden(log)}>編集</button>
                 <button className="secondary-action" onClick={() => onCreateThoughtFromSudden(log)}>このときの考えをメモする</button>
+                <button className="secondary-action" onClick={() => onCreateIfThenFromSudden(log)}>この状態の波に合わせたIf-Thenプランを作る</button>
                 <button className="delete-action" onClick={() => onDeleteSudden(log.id)}>削除</button>
               </div>
             </article>
@@ -3975,7 +4005,7 @@ function SuddenForm({
   );
 }
 
-function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, onIfThen }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[]; ifThenPlans: IfThenPlan[]; ifThenLogs: IfThenLog[]; onIfThen: () => void }) {
+function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, onIfThen }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[]; ifThenPlans: IfThenPlan[]; ifThenLogs: IfThenLog[]; onIfThen: (prefill?: IfThenPrefill) => void }) {
   const sortedDaily = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date));
   const highDaily = sortedDaily.slice(-14);
   const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
@@ -4012,6 +4042,16 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
   const thoughtSituationCounts = countBy(thoughtNotes.filter((note) => note.situation.trim()), (note) => note.situation.trim());
   const alternativeCount = thoughtNotes.filter((note) => note.alternativeView.trim()).length;
   const selfCompassionCount = thoughtNotes.filter((note) => note.selfCompassion.trim()).length;
+  const topTrigger = triggerCounts[0]?.[0];
+  const topStateTag = suddenByTag[0]?.[0];
+  const topThoughtTag = thoughtTagCounts[0]?.[0];
+  const ifThenPrefillFromInsights: IfThenPrefill = {
+    title: topTrigger ? `${topTrigger}に合わせる小さな行動` : topThoughtTag ? `${topThoughtTag}が出たときの小さな行動` : "記録から作るIf-Thenプラン",
+    ifText: topTrigger ? `${topTrigger}のあとに状態の波が出たら` : topThoughtTag ? `${topThoughtTag}が出たら` : "記録で見つけたきっかけが出たら",
+    category: topThoughtTag ? "思考を整理する" : "記録する",
+    relatedStateTags: topStateTag ? [topStateTag] : [],
+    relatedThoughtTags: topThoughtTag ? [topThoughtTag] : [],
+  };
 
   return (
     <section>
@@ -4031,7 +4071,7 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
             {insights.map((insight) => <InsightCard insight={insight} key={insight.id} />)}
           </div>
         )}
-        <button className="secondary-btn" onClick={onIfThen}>このきっかけに対するIf-Thenプランを作る</button>
+        <button className="secondary-btn" onClick={() => onIfThen(ifThenPrefillFromInsights)}>このきっかけに合わせたIf-Thenプランを作る</button>
       </section>
 
       <section className="section-block">
@@ -4340,7 +4380,7 @@ function SuddenHistory({ records, onEdit, onDelete }: { records: SuddenLog[]; on
   );
 }
 
-function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void }) {
+function DetailModal({ item, onClose, onCreateIfThen }: { item: DetailItem; onClose: () => void; onCreateIfThen: (log: SuddenLog) => void }) {
   const rows =
     item.kind === "daily"
       ? [
@@ -4392,6 +4432,17 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
             </div>
           ))}
         </div>
+        {item.kind === "sudden" && (
+          <button
+            className="secondary-btn"
+            onClick={() => {
+              onClose();
+              onCreateIfThen(item.record);
+            }}
+          >
+            この状態の波に合わせたIf-Thenプランを作る
+          </button>
+        )}
       </div>
     </div>
   );
@@ -5298,18 +5349,18 @@ function createConsultationDraft(): ConsultationNote {
   };
 }
 
-function createIfThenDraft(): IfThenPlan {
+function createIfThenDraft(prefill: IfThenPrefill = {}): IfThenPlan {
   const timestamp = nowIso();
   return {
     id: newId(),
-    title: "",
-    ifText: "",
-    thenText: "",
-    category: "体を整える",
-    relatedStateTags: [],
-    relatedThoughtTags: [],
+    title: prefill.title || "",
+    ifText: prefill.ifText || "",
+    thenText: prefill.thenText || "",
+    category: prefill.category || "体を整える",
+    relatedStateTags: normalizeStringArray(prefill.relatedStateTags).map(mapLegacyStateTag),
+    relatedThoughtTags: normalizeThoughtTags(prefill.relatedThoughtTags),
     ease: "すぐできそう",
-    memo: "",
+    memo: prefill.memo || "",
     isActive: true,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -6051,6 +6102,7 @@ function normalizeIfThenCategory(category?: string): IfThenCategory {
 }
 
 function normalizeIfThenEase(ease?: string): IfThenEase {
+  if (ease === "今は難しいかも") return "今は小さくした方がよさそう";
   return ifThenEaseOptions.includes(ease as IfThenEase) ? (ease as IfThenEase) : "すぐできそう";
 }
 
