@@ -23,6 +23,7 @@ type DailyRecord = {
   medicine: "飲んだ" | "飲んでいない" | "該当なし";
   events: string;
   memo: string;
+  thoughtTags?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -85,6 +86,23 @@ type ConsultationNote = {
   updatedAt: string;
 };
 
+type ThoughtNote = {
+  id: string;
+  date: string;
+  situation: string;
+  thought: string;
+  emotion: string;
+  intensity: number | null;
+  thoughtTags: string[];
+  alternativeView: string;
+  selfCompassion: string;
+  relatedAction: string;
+  memo: string;
+  sourceLogId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type AutoLockMinutes = 1 | 5 | 15 | 30 | 0;
 
 type PrivacySettings = {
@@ -137,13 +155,13 @@ type Insight = {
   relatedCount: number;
   action: string;
   note: string;
-  group: "daily" | "sudden" | "selfcare";
+  group: "daily" | "sudden" | "selfcare" | "thought";
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
-type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "all" };
+type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "thought"; id: string } | { kind: "all" };
 type BackupData = {
   app: {
     name: string;
@@ -155,6 +173,7 @@ type BackupData = {
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  thoughtNotes: ThoughtNote[];
   privacySettings: BackupPrivacySettings;
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
@@ -172,12 +191,14 @@ const suddenStorageKey = "self-compass-sudden-logs";
 const selfCarePlansStorageKey = "selfCarePlans";
 const selfCareLogsStorageKey = "selfCareLogs";
 const consultationNotesStorageKey = "consultationNotes";
+const thoughtNotesStorageKey = "thoughtNotes";
 const privacySettingsStorageKey = "privacySettings";
 const onboardingCompletedStorageKey = "onboardingCompleted";
 const onboardingCompletedAtStorageKey = "onboardingCompletedAt";
 const dailyDraftKey = "dailyRecordDraft";
 const suddenDraftKey = "suddenLogDraft";
 const consultationDraftKey = "consultationNoteDraft";
+const thoughtDraftKey = "thoughtNoteDraft";
 const selfCareDraftKey = "selfCareDraft";
 const habitSettingsStorageKey = "habitSettings";
 const reminderDismissalsStorageKey = "reminderDismissals";
@@ -202,6 +223,7 @@ const reminderTimeTypes: ReminderTimeType[] = ["朝", "昼", "夕方", "夜", "�
 const weeklyGoalTypes: WeeklyGoalType[] = ["週に1回", "週に3回", "できる日に記録する", "カスタム"];
 const displayThemes: DisplayTheme[] = ["standard", "soft", "clear"];
 const displayFontSizes: DisplayFontSize[] = ["standard", "large", "xlarge"];
+const thoughtTagOptions = ["自分を責める", "白黒で考える", "先のことを考えすぎる", "悪い方に決めつける", "相手の気持ちを読みすぎる", "すべきが強くなる", "完璧にやろうとする", "一度のことを全部に広げる", "よい面を見落とす", "比べすぎる", "早く答えを出そうとする", "その他"];
 const defaultReminderMessages = [
   "今日の状態を少しだけ記録してみませんか？",
   "全部入力しなくても大丈夫です",
@@ -220,6 +242,14 @@ const selfCareCandidates: Array<Pick<SelfCarePlan, "title" | "category" | "memo"
   { title: "部屋を少し整える", category: "環境を整える", memo: "ひとつだけ片づける" },
   { title: "音楽を聴く", category: "環境を整える", memo: "今の状態に合いそうな曲を選ぶ" },
   { title: "紙に書き出す", category: "思考を整理する", memo: "浮かんだことを短く書く" },
+  { title: "頭に浮かんだ考えを書き出す", category: "思考を整理する", memo: "頭の中から一度外に置いてみる" },
+  { title: "事実と想像を分ける", category: "思考を整理する", memo: "分かっていることと想像を分けて見る" },
+  { title: "今できることだけに分ける", category: "思考を整理する", memo: "今日できる小さな単位に分ける" },
+  { title: "自分に声をかける", category: "思考を整理する", memo: "友人に言うような短い言葉を選ぶ" },
+  { title: "友人に言うなら何と言うか考える", category: "思考を整理する", memo: "少し距離を取るための問いかけ" },
+  { title: "今日は結論を出さない", category: "思考を整理する", memo: "急いで答えを決めない時間を作る" },
+  { title: "5分だけ置いておく", category: "思考を整理する", memo: "考えを少し横に置いてみる" },
+  { title: "別の見方を1つだけ探す", category: "思考を整理する", memo: "無理のない範囲で見方を増やす" },
   { title: "信頼できる人に連絡する", category: "人とつながる", memo: "短い一言でも大丈夫" },
   { title: "予定を少し減らす", category: "休む", memo: "調整できる予定を見直す" },
   { title: "食事を整える", category: "習慣を見直す", memo: "食べやすいものを選ぶ" },
@@ -232,6 +262,7 @@ const draftDefinitions = [
   { key: suddenDraftKey, label: "突発ログ" },
   { key: consultationDraftKey, label: "相談ノート" },
   { key: selfCareDraftKey, label: "カスタムセルフケア" },
+  { key: thoughtDraftKey, label: "思考メモ" },
 ];
 
 const onboardingSteps = [
@@ -322,6 +353,12 @@ function loadConsultationNotes() {
   return notes;
 }
 
+function loadThoughtNotes() {
+  const notes = readStorage<Partial<ThoughtNote>>(thoughtNotesStorageKey).map(normalizeThoughtNote);
+  localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(notes));
+  return notes;
+}
+
 function loadPrivacySettings() {
   try {
     const parsed = JSON.parse(localStorage.getItem(privacySettingsStorageKey) || "{}") as Partial<PrivacySettings>;
@@ -374,6 +411,7 @@ function App() {
   const [selfCarePlans, setSelfCarePlans] = useState<SelfCarePlan[]>(loadSelfCarePlans);
   const [selfCareLogs, setSelfCareLogs] = useState<SelfCareLog[]>(loadSelfCareLogs);
   const [consultationNotes, setConsultationNotes] = useState<ConsultationNote[]>(loadConsultationNotes);
+  const [thoughtNotes, setThoughtNotes] = useState<ThoughtNote[]>(loadThoughtNotes);
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>(loadPrivacySettings);
   const [habitSettings, setHabitSettings] = useState<HabitSettings>(loadHabitSettings);
   const [reminderDismissals, setReminderDismissals] = useState<ReminderDismissal[]>(loadReminderDismissals);
@@ -381,6 +419,8 @@ function App() {
   const [isLocked, setIsLocked] = useState(() => loadPrivacySettings().isLockEnabled);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
+  const [editingThought, setEditingThought] = useState<ThoughtNote | null>(null);
+  const [prefillThought, setPrefillThought] = useState<Partial<ThoughtNote> | null>(null);
   const [newDailyDate, setNewDailyDate] = useState<string | null>(null);
   const [newSuddenDate, setNewSuddenDate] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
@@ -518,6 +558,18 @@ function App() {
     setFlash(isEditing ? "相談メモを更新しました" : "相談メモを保存しました");
   };
 
+  const saveThoughtNote = (note: ThoughtNote) => {
+    const isEditing = thoughtNotes.some((item) => item.id === note.id);
+    const next = isEditing ? thoughtNotes.map((item) => (item.id === note.id ? note : item)) : [note, ...thoughtNotes];
+    setThoughtNotes(next);
+    localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(next));
+    localStorage.removeItem(thoughtDraftKey);
+    setActiveFormDirty(false);
+    setEditingThought(null);
+    setPrefillThought(null);
+    setFlash(isEditing ? "思考メモを更新しました" : "思考メモを保存しました");
+  };
+
   const updateConsultationStatus = (id: string, status: ConsultationStatus) => {
     const next = consultationNotes.map((note) => note.id === id ? { ...note, status, updatedAt: nowIso() } : note);
     setConsultationNotes(next);
@@ -531,6 +583,14 @@ function App() {
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(next));
     setPendingDelete(null);
     setFlash("相談メモを削除しました");
+  };
+
+  const deleteThoughtNote = (id: string) => {
+    const next = thoughtNotes.filter((note) => note.id !== id);
+    setThoughtNotes(next);
+    localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(next));
+    setPendingDelete(null);
+    setFlash("思考メモを削除しました");
   };
 
   const deleteDaily = (id: string) => {
@@ -557,6 +617,7 @@ function App() {
     setSelfCarePlans(backup.selfCarePlans);
     setSelfCareLogs(backup.selfCareLogs);
     setConsultationNotes(backup.consultationNotes);
+    setThoughtNotes(backup.thoughtNotes);
     setHabitSettings(normalizeHabitSettings(backup.habitSettings));
     setReminderDismissals(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[]);
     setDisplaySettings(normalizeDisplaySettings(backup.displaySettings));
@@ -567,6 +628,7 @@ function App() {
     localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(backup.selfCarePlans));
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(backup.selfCareLogs));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(backup.consultationNotes));
+    localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(backup.thoughtNotes));
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(normalizeHabitSettings(backup.habitSettings)));
     localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean)));
@@ -583,6 +645,7 @@ function App() {
     setSelfCarePlans([]);
     setSelfCareLogs([]);
     setConsultationNotes([]);
+    setThoughtNotes([]);
     const nextPrivacy = { ...privacySettings, privateDisplayMode: false, updatedAt: nowIso() };
     setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify([]));
@@ -590,6 +653,7 @@ function App() {
     localStorage.setItem(selfCarePlansStorageKey, JSON.stringify([]));
     localStorage.setItem(selfCareLogsStorageKey, JSON.stringify([]));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify([]));
+    localStorage.setItem(thoughtNotesStorageKey, JSON.stringify([]));
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
     setPendingDelete(null);
     setDetailItem(null);
@@ -662,6 +726,27 @@ function App() {
     setScreen("consultation");
   };
 
+  const openThought = () => {
+    setFlash("");
+    setEditingThought(null);
+    setPrefillThought(null);
+    setScreen("thought");
+  };
+
+  const openThoughtFromSudden = (log: SuddenLog) => {
+    setFlash("");
+    setEditingThought(null);
+    setPrefillThought({
+      date: log.occurredAt.slice(0, 10),
+      situation: [...log.triggers, log.place].filter(Boolean).join(" / "),
+      thought: log.thoughts,
+      thoughtTags: log.stateTags.includes("考えすぎ") ? ["先のことを考えすぎる"] : [],
+      relatedAction: log.actions.join("、"),
+      sourceLogId: log.id,
+    });
+    setScreen("thought");
+  };
+
   const openData = () => {
     setFlash("");
     setScreen("data");
@@ -721,6 +806,7 @@ function App() {
             selfCarePlans={selfCarePlans}
             selfCareLogs={selfCareLogs}
             consultationNotes={consultationNotes}
+            thoughtNotes={thoughtNotes}
             privateDisplayMode={privacySettings.privateDisplayMode}
             habitSettings={habitSettings}
             reminderDismissals={reminderDismissals}
@@ -731,6 +817,7 @@ function App() {
             onDaily={openDaily}
             onSudden={openSudden}
             onCalendar={openCalendar}
+            onThought={openThought}
             onDismissReminder={dismissReminderToday}
           />
         )}
@@ -742,6 +829,7 @@ function App() {
             onSudden={openSudden}
             onRecords={openRecords}
             onCalendar={openCalendar}
+            onThought={openThought}
           />
         )}
         {screen === "daily" && <DailyForm key={editingDaily?.id || newDailyDate || "new-daily"} initial={editingDaily} initialDate={newDailyDate} onSave={saveDaily} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
@@ -763,6 +851,7 @@ function App() {
               setEditingSudden(log);
               setScreen("sudden");
             }}
+            onCreateThoughtFromSudden={openThoughtFromSudden}
             onDeleteDaily={(id) => setPendingDelete({ kind: "daily", id })}
             onDeleteSudden={(id) => setPendingDelete({ kind: "sudden", id })}
           />
@@ -772,14 +861,16 @@ function App() {
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
             selfCareLogs={selfCareLogs}
+            thoughtNotes={thoughtNotes}
             onAnalysis={openAnalysis}
             onReport={openReport}
             onConsultation={openConsultation}
             onCalendar={openCalendar}
+            onThought={openThought}
           />
         )}
-        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} />}
-        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} onOpenConsultation={openConsultation} />}
+        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} thoughtNotes={thoughtNotes} />}
+        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} thoughtNotes={thoughtNotes} onOpenConsultation={openConsultation} />}
         {screen === "calendar" && (
           <CalendarScreen
             dailyRecords={dailyRecords}
@@ -808,12 +899,31 @@ function App() {
             dailyRecords={dailyRecords}
             suddenLogs={suddenLogs}
             selfCareLogs={selfCareLogs}
+            thoughtNotes={thoughtNotes}
             notes={consultationNotes}
             flash={flash}
             onSave={saveConsultationNote}
             onDelete={(id) => setPendingDelete({ kind: "consultation", id })}
             onMarkDone={(id) => updateConsultationStatus(id, "done")}
             privateDisplayMode={privacySettings.privateDisplayMode}
+            onDirtyChange={setActiveFormDirty}
+          />
+        )}
+        {screen === "thought" && (
+          <ThoughtNotesScreen
+            key={editingThought?.id || prefillThought?.sourceLogId || "thought-new"}
+            notes={thoughtNotes}
+            initial={editingThought}
+            prefill={prefillThought}
+            flash={flash}
+            privateDisplayMode={privacySettings.privateDisplayMode}
+            onSave={saveThoughtNote}
+            onEdit={(note) => {
+              setFlash("");
+              setEditingThought(note);
+              setPrefillThought(null);
+            }}
+            onDelete={(id) => setPendingDelete({ kind: "thought", id })}
             onDirtyChange={setActiveFormDirty}
           />
         )}
@@ -861,6 +971,7 @@ function App() {
             selfCarePlans={selfCarePlans}
             selfCareLogs={selfCareLogs}
             consultationNotes={consultationNotes}
+            thoughtNotes={thoughtNotes}
             privacySettings={privacySettings}
             habitSettings={habitSettings}
             reminderDismissals={reminderDismissals}
@@ -880,6 +991,7 @@ function App() {
             if (pendingDelete.kind === "sudden") deleteSudden(pendingDelete.id);
             if (pendingDelete.kind === "selfcare") deleteSelfCarePlan(pendingDelete.id);
             if (pendingDelete.kind === "consultation") deleteConsultationNote(pendingDelete.id);
+            if (pendingDelete.kind === "thought") deleteThoughtNote(pendingDelete.id);
             if (pendingDelete.kind === "all") deleteAllData();
           }}
           isAllData={pendingDelete.kind === "all"}
@@ -1159,6 +1271,7 @@ function Home({
   selfCarePlans,
   selfCareLogs,
   consultationNotes,
+  thoughtNotes,
   privateDisplayMode,
   habitSettings,
   reminderDismissals,
@@ -1169,6 +1282,7 @@ function Home({
   onLock,
   onCareDone,
   onCalendar,
+  onThought,
   onDismissReminder,
 }: {
   dailyRecords: DailyRecord[];
@@ -1176,6 +1290,7 @@ function Home({
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  thoughtNotes: ThoughtNote[];
   privateDisplayMode: boolean;
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
@@ -1186,13 +1301,15 @@ function Home({
   onLock: () => void;
   onCareDone: (plan: SelfCarePlan) => void;
   onCalendar: () => void;
+  onThought: () => void;
   onDismissReminder: () => void;
 }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const todayPlans = selfCarePlans.slice(0, 3);
-  const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs)[0];
+  const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes)[0];
   const openNotes = consultationNotes.filter((note) => note.status !== "done");
   const latestNote = [...consultationNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  const latestThought = [...thoughtNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const showFirstUseHint = dailyRecords.length === 0 && suddenLogs.length === 0;
   const habitSummary = getHabitSummary(dailyRecords);
   const showReminder = shouldShowHabitReminder(habitSettings, dailyRecords, reminderDismissals);
@@ -1280,6 +1397,17 @@ function Home({
           <p className="soft-text">記録が増えると、睡眠・天気・外出などとの関係が見えやすくなります。</p>
         )}
         <button className="secondary-btn" onClick={onCalendar}>月間ふり返りを見る</button>
+        <button className="secondary-btn" onClick={onThought}>思考メモを書く</button>
+      </section>
+
+      <section className="section-block">
+        <h2>思考メモ</h2>
+        <p className="soft-text">考えが頭の中で回るときは、思考メモに一度置いておけます。</p>
+        <div className="summary-list">
+          <Metric label="メモ" value={privateDisplayMode && latestThought ? "記録あり" : latestThought ? latestThought.date : "なし"} />
+          <Metric label="よく使うタグ" value={privateDisplayMode ? "記録あり" : firstKey(countFlat(thoughtNotes.flatMap((note) => note.thoughtTags)))} />
+        </div>
+        <button className="secondary-btn" onClick={onThought}>思考メモを開く</button>
       </section>
 
       <section className="section-block">
@@ -1316,7 +1444,7 @@ function Home({
   );
 }
 
-function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords, onCalendar }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; onDaily: () => void; onSudden: () => void; onRecords: () => void; onCalendar: () => void }) {
+function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords, onCalendar, onThought }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; onDaily: () => void; onSudden: () => void; onRecords: () => void; onCalendar: () => void; onThought: () => void }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const recentDaily = [...dailyRecords].sort((a, b) => b.date.localeCompare(a.date))[0];
   const recentSudden = [...suddenLogs].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0];
@@ -1338,6 +1466,7 @@ function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords, onC
           <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
           <button className="secondary-btn no-margin" onClick={onRecords}>記録一覧を見る</button>
           <button className="secondary-btn no-margin" onClick={onCalendar}>カレンダーを見る</button>
+          <button className="secondary-btn no-margin" onClick={onThought}>思考メモを書く</button>
         </div>
       </section>
 
@@ -1356,20 +1485,24 @@ function ReviewHub({
   dailyRecords,
   suddenLogs,
   selfCareLogs,
+  thoughtNotes,
   onAnalysis,
   onReport,
   onConsultation,
   onCalendar,
+  onThought,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCareLogs: SelfCareLog[];
+  thoughtNotes: ThoughtNote[];
   onAnalysis: () => void;
   onReport: () => void;
   onConsultation: () => void;
   onCalendar: () => void;
+  onThought: () => void;
 }) {
-  const insight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs)[0];
+  const insight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes)[0];
 
   return (
     <section>
@@ -1391,6 +1524,7 @@ function ReviewHub({
         <div className="data-actions">
           <button className="primary-btn" onClick={onAnalysis}>ふり返りを見る</button>
           <button className="secondary-btn no-margin" onClick={onCalendar}>カレンダーを見る</button>
+          <button className="secondary-btn no-margin" onClick={onThought}>思考メモを見る</button>
           <button className="secondary-btn no-margin" onClick={onReport}>共有用まとめを作る</button>
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談前まとめを作る</button>
           <button className="secondary-btn no-margin" onClick={onConsultation}>AI相談文を作る</button>
@@ -1740,9 +1874,9 @@ function CalendarScreen({
           <Metric label="記録日数" value={privateDisplayMode ? "記録状況あり" : `${summary.dailyDays}日`} />
           <Metric label="突発ログ" value={privateDisplayMode ? "記録状況あり" : `${summary.suddenCount}件`} />
           <Metric label="セルフケア" value={privateDisplayMode ? "記録状況あり" : `${summary.careCount}回`} />
-          <Metric label="平均気分" value={privateDisplayMode ? "記録状況あり" : `${summary.averageMood}/10`} />
-          <Metric label="平均不安" value={privateDisplayMode ? "記録状況あり" : `${summary.averageAnxiety}/10`} />
-          <Metric label="平均睡眠" value={privateDisplayMode ? "記録状況あり" : `${summary.averageSleep}h`} />
+          <Metric label="平均気分" value={privateDisplayMode ? "記録状況あり" : formatAverageWithSuffix(summary.averageMood, "/10")} />
+          <Metric label="平均不安" value={privateDisplayMode ? "記録状況あり" : formatAverageWithSuffix(summary.averageAnxiety, "/10")} />
+          <Metric label="平均睡眠" value={privateDisplayMode ? "記録状況あり" : formatAverageWithSuffix(summary.averageSleep, "h")} />
           <Metric label="波が大きい日" value={privateDisplayMode ? "記録状況あり" : `${summary.waveDays}日`} />
           <Metric label="状態タグ" value={privateDisplayMode ? "記録あり" : summary.topTag} />
           <Metric label="よく使ったケア" value={privateDisplayMode ? "記録あり" : summary.topCare} />
@@ -1808,6 +1942,7 @@ function DataManagement({
   selfCarePlans,
   selfCareLogs,
   consultationNotes,
+  thoughtNotes,
   privacySettings,
   habitSettings,
   reminderDismissals,
@@ -1821,6 +1956,7 @@ function DataManagement({
   selfCarePlans: SelfCarePlan[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  thoughtNotes: ThoughtNote[];
   privacySettings: PrivacySettings;
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
@@ -1845,6 +1981,7 @@ function DataManagement({
     selfCarePlans,
     selfCareLogs,
     consultationNotes,
+    thoughtNotes,
     privacySettings: toBackupPrivacySettings(privacySettings),
     habitSettings,
     reminderDismissals,
@@ -1916,6 +2053,17 @@ function DataManagement({
     setMessage("相談メモCSVを作成しました。");
   };
 
+  const exportThoughtCsv = () => {
+    if (!thoughtNotes.length) {
+      setError("出力できる思考メモがありません。");
+      setMessage("");
+      return;
+    }
+    downloadTextFile(`thought-notes-${today()}.csv`, toThoughtCsv(thoughtNotes), "text/csv;charset=utf-8");
+    setError("");
+    setMessage("思考メモCSVを作成しました。");
+  };
+
   const refreshDrafts = () => setDrafts(listDrafts());
 
   const deleteDraft = (key: string) => {
@@ -1955,7 +2103,7 @@ function DataManagement({
 
       <section className="section-block data-card">
         <h2>JSONバックアップ</h2>
-        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、プライバシー設定、習慣サポート設定、表示設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。</p>
+        <p className="soft-text">日々の記録、突発ログ、マイプラン、セルフケア記録、相談メモ、思考メモ、プライバシー設定、習慣サポート設定、表示設定をまとめて、端末内でファイル化します。パスコードそのものは含めません。思考メモには個人的な内容が含まれることがあります。</p>
         <button className="primary-btn" onClick={() => downloadBackup(backup)}>JSONバックアップを保存</button>
       </section>
 
@@ -1980,6 +2128,7 @@ function DataManagement({
           <button className="secondary-btn no-margin" onClick={exportSuddenCsv}>突発ログCSV</button>
           <button className="secondary-btn no-margin" onClick={exportSelfCareCsv}>セルフケア記録CSV</button>
           <button className="secondary-btn no-margin" onClick={exportConsultationCsv}>相談メモCSV</button>
+          <button className="secondary-btn no-margin" onClick={exportThoughtCsv}>思考メモCSV</button>
         </div>
       </section>
 
@@ -2006,7 +2155,7 @@ function DataManagement({
 
       <section className="section-block data-card danger-zone">
         <h2>全データ削除</h2>
-        <p className="soft-text">保存されている記録、マイプラン、セルフケア記録、相談メモをすべて削除します。先にバックアップを取ることをおすすめします。</p>
+        <p className="soft-text">保存されている記録、マイプラン、セルフケア記録、相談メモ、思考メモをすべて削除します。先にバックアップを取ることをおすすめします。</p>
         <button className="delete-action full-width" onClick={onDeleteAllRequest}>すべての記録を削除</button>
       </section>
     </section>
@@ -2287,6 +2436,7 @@ function ConsultationScreen({
   dailyRecords,
   suddenLogs,
   selfCareLogs,
+  thoughtNotes,
   notes,
   flash,
   onSave,
@@ -2298,6 +2448,7 @@ function ConsultationScreen({
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCareLogs: SelfCareLog[];
+  thoughtNotes: ThoughtNote[];
   notes: ConsultationNote[];
   flash: string;
   onSave: (note: ConsultationNote) => void;
@@ -2318,7 +2469,7 @@ function ConsultationScreen({
   const [showRestore, setShowRestore] = useState(() => Boolean(readDraft<ConsultationNote>(consultationDraftKey)));
   const [isSaving, setIsSaving] = useState(false);
   const sortedNotes = [...notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  const prepSummary = buildConsultationSummary(period, dailyRecords, suddenLogs, selfCareLogs, notes);
+  const prepSummary = buildConsultationSummary(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, notes);
   const aiText = buildConsultationAiPrompt(prepSummary);
 
   const startEdit = (note: ConsultationNote) => {
@@ -2551,6 +2702,240 @@ function ConsultationDetailModal({
   );
 }
 
+function ThoughtNotesScreen({
+  notes,
+  initial,
+  prefill,
+  flash,
+  privateDisplayMode,
+  onSave,
+  onEdit,
+  onDelete,
+  onDirtyChange,
+}: {
+  notes: ThoughtNote[];
+  initial: ThoughtNote | null;
+  prefill: Partial<ThoughtNote> | null;
+  flash: string;
+  privateDisplayMode: boolean;
+  onSave: (note: ThoughtNote) => void;
+  onEdit: (note: ThoughtNote) => void;
+  onDelete: (id: string) => void;
+  onDirtyChange: (dirty: boolean) => void;
+}) {
+  const createBlank = (): ThoughtNote => {
+    const timestamp = nowIso();
+    return normalizeThoughtNote({
+      id: newId(),
+      date: today(),
+      thoughtTags: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...prefill,
+    });
+  };
+  const [form, setForm] = useState<ThoughtNote>(initial || createBlank());
+  const [detail, setDetail] = useState<ThoughtNote | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [showRestore, setShowRestore] = useState(() => !initial && !prefill && Boolean(readDraft<ThoughtNote>(thoughtDraftKey)));
+  const [isSaving, setIsSaving] = useState(false);
+  const sortedNotes = [...notes].sort((a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt));
+
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (initial || prefill || showRestore || !isDirty) return;
+    if (!hasThoughtDraftContent(form)) {
+      removeDraft(thoughtDraftKey);
+      setDraftStatus("");
+      return;
+    }
+    setDraftStatus("下書きを保存中です");
+    const timer = window.setTimeout(() => {
+      writeDraft(thoughtDraftKey, "thought", form);
+      setDraftStatus("下書きを保存しました");
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [form, initial, prefill, showRestore, isDirty]);
+
+  const updateForm = (next: ThoughtNote) => {
+    setForm(next);
+    setIsDirty(true);
+  };
+
+  const restoreDraft = () => {
+    const draft = readDraft<ThoughtNote>(thoughtDraftKey);
+    if (draft) {
+      setForm(normalizeThoughtNote(draft.data));
+      setIsDirty(true);
+      setDraftStatus("下書きを再開しました");
+    }
+    setShowRestore(false);
+  };
+
+  const discardDraft = () => {
+    removeDraft(thoughtDraftKey);
+    setShowRestore(false);
+    setDraftStatus("");
+  };
+
+  const resetForm = () => {
+    setForm(createBlank());
+    setIsDirty(false);
+    setIsSaving(false);
+    setDraftStatus("");
+  };
+
+  const save = () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setIsDirty(false);
+    setDraftStatus("");
+    removeDraft(thoughtDraftKey);
+    onSave({ ...form, updatedAt: nowIso(), createdAt: form.createdAt || nowIso() });
+    resetForm();
+  };
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">考えを置いておく</p>
+          <h1>思考メモ</h1>
+        </div>
+      </header>
+      <p className="soft-text">頭に浮かんだ考えや、入りやすい考え方のパターンをやさしく整理できます。</p>
+      <div className="notice compact-notice">思考タグは責めるためではなく、気づくための参考情報です。無理に前向きに変える必要はありません。</div>
+      {flash && <div className="success-message">{flash}</div>}
+
+      <section className="section-block data-card">
+        <h2>{initial ? "思考メモを編集" : "思考メモを書く"}</h2>
+        {!initial && showRestore && <DraftRestoreNotice onRestore={restoreDraft} onDiscard={discardDraft} />}
+        {draftStatus && <p className="draft-status">{draftStatus}</p>}
+        <label className="field">
+          <span>発生日 <small>任意</small></span>
+          <input type="date" value={form.date} onChange={(event) => updateForm({ ...form, date: event.target.value })} />
+        </label>
+        <TextArea label="場面" helper="どんな場面だったか、短く残せます" value={form.situation} onChange={(situation) => updateForm({ ...form, situation })} />
+        <TextArea label="頭に浮かんだ考え" helper="任意。書ける範囲で大丈夫です" value={form.thought} onChange={(thought) => updateForm({ ...form, thought })} />
+        <label className="field">
+          <span>そのときの感情 <small>任意</small></span>
+          <input value={form.emotion} onChange={(event) => updateForm({ ...form, emotion: event.target.value })} placeholder="例：不安、焦り、疲れ" />
+        </label>
+        <ScoreField label="感情の強さ" value={form.intensity} onChange={(intensity) => updateForm({ ...form, intensity })} />
+        <MultiChoice label="思考タグ" options={thoughtTagOptions} values={form.thoughtTags} onChange={(thoughtTags) => updateForm({ ...form, thoughtTags })} />
+        <TextArea label="別の見方メモ" helper="少し落ち着いたあとで、別の見方ができそうなら書いておけます" value={form.alternativeView} onChange={(alternativeView) => updateForm({ ...form, alternativeView })} placeholder="今日は疲れている影響もありそう" />
+        <TextArea label="自分にかけたい言葉" helper="友人に声をかけるように、短い言葉を残せます" value={form.selfCompassion} onChange={(selfCompassion) => updateForm({ ...form, selfCompassion })} placeholder="今は休んでも大丈夫" />
+        <TextArea label="関連する行動" helper="そのあとに取った行動や、試したことを残せます" value={form.relatedAction} onChange={(relatedAction) => updateForm({ ...form, relatedAction })} />
+        <TextArea label="メモ" helper="任意。あとから編集できます" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} />
+        <div className="data-actions">
+          <button className="primary-btn" disabled={isSaving} onClick={save}>{isSaving ? "保存しています" : initial ? "更新する" : "保存する"}</button>
+          {initial && <button className="secondary-btn no-margin" onClick={resetForm}>編集をやめる</button>}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <h2>思考メモ一覧</h2>
+        {sortedNotes.length === 0 ? (
+          <p className="soft-text">まだ思考メモはありません。考えが頭の中で回るときに、短く置いておけます。</p>
+        ) : (
+          <div className="record-list">
+            {sortedNotes.map((note) => (
+              <article className="record-card" key={note.id}>
+                <div className="record-card-head">
+                  <div>
+                    <p className="label">{note.date}</p>
+                    <h2>{privateDisplayMode ? "思考メモあり" : shortText(note.situation || note.thought || "思考メモ")}</h2>
+                  </div>
+                  <span className="badge">{formatScore(note.intensity)}</span>
+                </div>
+                <TagList tags={note.thoughtTags} empty="思考タグなし" />
+                <div className="compact-metrics">
+                  <Metric label="感情" value={privateDisplayMode ? "記録あり" : note.emotion || "未入力"} />
+                  <Metric label="強さ" value={privateDisplayMode ? "記録あり" : formatScore(note.intensity)} />
+                </div>
+                <p className="record-snippet">{privateDisplayMode ? "思考本文は非表示です" : shortText(note.memo || note.alternativeView || note.thought)}</p>
+                <div className="card-actions">
+                  <button className="secondary-action" onClick={() => setDetail(note)}>詳細</button>
+                  <button className="secondary-action" onClick={() => onEdit(note)}>編集</button>
+                  <button className="delete-action" onClick={() => onDelete(note.id)}>削除</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {detail && <ThoughtDetailModal note={detail} privateDisplayMode={privateDisplayMode} onClose={() => setDetail(null)} />}
+    </section>
+  );
+}
+
+function ThoughtDetailModal({ note, privateDisplayMode, onClose }: { note: ThoughtNote; privateDisplayMode: boolean; onClose: () => void }) {
+  const hidden = privateDisplayMode ? "詳細は非表示です" : "";
+  const rows = [
+    ["発生日", note.date],
+    ["場面", hidden || note.situation || "未入力"],
+    ["頭に浮かんだ考え", hidden || note.thought || "未入力"],
+    ["そのときの感情", note.emotion || "未入力"],
+    ["感情の強さ", formatScore(note.intensity)],
+    ["思考タグ", joinTags(note.thoughtTags)],
+    ["別の見方メモ", hidden || note.alternativeView || "未入力"],
+    ["自分にかけたい言葉", hidden || note.selfCompassion || "未入力"],
+    ["関連する行動", hidden || note.relatedAction || "未入力"],
+    ["メモ", hidden || note.memo || "未入力"],
+  ];
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="detail-modal">
+        <div className="modal-head">
+          <div>
+            <p className="eyebrow">思考メモ</p>
+            <h2>詳細</h2>
+          </div>
+          <button className="ghost-btn" onClick={onClose}>閉じる</button>
+        </div>
+        <div className="detail-list">
+          {rows.map(([label, value]) => (
+            <div className="detail-row" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function hasThoughtDraftContent(note: ThoughtNote) {
+  return Boolean(
+    note.situation.trim() ||
+      note.thought.trim() ||
+      note.emotion.trim() ||
+      note.intensity != null ||
+      note.thoughtTags.length ||
+      note.alternativeView.trim() ||
+      note.selfCompassion.trim() ||
+      note.relatedAction.trim() ||
+      note.memo.trim(),
+  );
+}
+
 function RecordsScreen({
   dailyRecords,
   suddenLogs,
@@ -2559,6 +2944,7 @@ function RecordsScreen({
   onDetail,
   onEditDaily,
   onEditSudden,
+  onCreateThoughtFromSudden,
   onDeleteDaily,
   onDeleteSudden,
 }: {
@@ -2569,6 +2955,7 @@ function RecordsScreen({
   onDetail: (item: DetailItem) => void;
   onEditDaily: (record: DailyRecord) => void;
   onEditSudden: (log: SuddenLog) => void;
+  onCreateThoughtFromSudden: (log: SuddenLog) => void;
   onDeleteDaily: (id: string) => void;
   onDeleteSudden: (id: string) => void;
 }) {
@@ -2644,6 +3031,7 @@ function RecordsScreen({
               <div className="card-actions">
                 <button className="secondary-action" onClick={() => onDetail({ kind: "sudden", record: log })}>詳細</button>
                 <button className="secondary-action" onClick={() => onEditSudden(log)}>編集</button>
+                <button className="secondary-action" onClick={() => onCreateThoughtFromSudden(log)}>このときの考えをメモする</button>
                 <button className="delete-action" onClick={() => onDeleteSudden(log.id)}>削除</button>
               </div>
             </article>
@@ -2685,6 +3073,7 @@ function DailyForm({
       medicine: "該当なし",
       events: "",
       memo: "",
+      thoughtTags: [],
       createdAt: nowIso(),
       updatedAt: nowIso(),
     },
@@ -2791,6 +3180,7 @@ function DailyForm({
         </FormSection>
 
         <FormSection title="できごと・メモ">
+          <MultiChoice label="その日によく出た考え方" options={thoughtTagOptions} values={form.thoughtTags || []} onChange={(thoughtTags) => updateForm({ ...form, thoughtTags })} />
           <TextArea label="今日の主な出来事" helper="任意。あとから編集できます" value={form.events} onChange={(events) => updateForm({ ...form, events })} />
           <TextArea label="今日のメモ" helper="任意。短くても空欄でも大丈夫です" value={form.memo} onChange={(memo) => updateForm({ ...form, memo })} />
         </FormSection>
@@ -2924,10 +3314,10 @@ function SuddenForm({
   );
 }
 
-function Analysis({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[] }) {
+function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; selfCareLogs: SelfCareLog[]; thoughtNotes: ThoughtNote[] }) {
   const sortedDaily = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date));
   const highDaily = sortedDaily.slice(-14);
-  const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs);
+  const insights = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes);
   const weatherMood = groupedAverage(dailyRecords, (record) => record.weather, (record) => record.mood);
   const exerciseMood = groupedAverage(dailyRecords, (record) => (record.exercise === "なし" ? "運動なし" : "運動あり"), (record) => record.mood);
   const sleepRecords = dailyRecords.filter(hasSleepHours);
@@ -2942,6 +3332,13 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: Da
   const hourCounts = countBy(suddenLogs, (log) => `${new Date(log.occurredAt).getHours()}時台`);
   const selfCareCounts = countBy(selfCareLogs, (log) => log.title);
   const selfCareResultCounts = countBy(selfCareLogs, (log) => log.result);
+  const thoughtTagCounts = countFlat([
+    ...thoughtNotes.flatMap((note) => note.thoughtTags),
+    ...dailyRecords.flatMap((record) => record.thoughtTags || []),
+  ]);
+  const thoughtSituationCounts = countBy(thoughtNotes.filter((note) => note.situation.trim()), (note) => note.situation.trim());
+  const alternativeCount = thoughtNotes.filter((note) => note.alternativeView.trim()).length;
+  const selfCompassionCount = thoughtNotes.filter((note) => note.selfCompassion.trim()).length;
 
   return (
     <section>
@@ -3007,6 +3404,25 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs }: { dailyRecords: Da
       </section>
 
       <section className="section-block">
+        <h2>思考メモ</h2>
+        {thoughtNotes.length === 0 && thoughtTagCounts.length === 0 ? (
+          <EmptyState text="まだ思考メモはありません。考え方のパターンは、記録が増えると見えやすくなります。" />
+        ) : (
+          <>
+            <p className="soft-text">記録上、出やすい思考タグです。責めるためではなく、気づくための参考情報です。</p>
+            <div className="summary-list">
+              <Metric label="思考メモ" value={`${thoughtNotes.length}件`} />
+              <Metric label="平均の強さ" value={formatAverage(thoughtNotes.map((note) => note.intensity))} />
+              <Metric label="別の見方メモ" value={`${alternativeCount}件`} />
+              <Metric label="自分への言葉" value={`${selfCompassionCount}件`} />
+            </div>
+            <KeyValueList title="よく出る思考タグ" items={thoughtTagCounts} suffix="件" />
+            <KeyValueList title="よく出る場面" items={thoughtSituationCounts} suffix="件" />
+          </>
+        )}
+      </section>
+
+      <section className="section-block">
         <h2>セルフケア</h2>
         {selfCareLogs.length === 0 ? (
           <EmptyState text="まだセルフケア記録がありません" />
@@ -3031,12 +3447,14 @@ function Report({
   suddenLogs,
   selfCareLogs,
   consultationNotes,
+  thoughtNotes,
   onOpenConsultation,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
   selfCareLogs: SelfCareLog[];
   consultationNotes: ConsultationNote[];
+  thoughtNotes: ThoughtNote[];
   onOpenConsultation: () => void;
 }) {
   const [period, setPeriod] = useState(7);
@@ -3044,8 +3462,9 @@ function Report({
   const daily = dailyRecords.filter((record) => daysAgo(record.date) < period);
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
   const careInPeriod = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
-  const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3;
-  const reportInsights = calculateInsights(daily, sudden, careInPeriod);
+  const thoughtInPeriod = thoughtNotes.filter((note) => daysAgo(note.date) < period);
+  const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3 && thoughtInPeriod.length < 3;
+  const reportInsights = calculateInsights(daily, sudden, careInPeriod, thoughtInPeriod);
   const monthlySummaryText = buildMonthlySummaryText(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs);
   const insightSummary = reportInsights.length
     ? reportInsights.slice(0, 5).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
@@ -3058,6 +3477,13 @@ function Report({
   const topCare = countBy(careInPeriod, (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const settledCare = countBy(careInPeriod.filter((log) => log.result === "少し整った"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const notFitCare = countBy(careInPeriod.filter((log) => log.result === "今は合わなかった"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const topThoughtTags = countFlat([
+    ...thoughtInPeriod.flatMap((note) => note.thoughtTags),
+    ...daily.flatMap((record) => record.thoughtTags || []),
+  ]).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const topThoughtSituations = countBy(thoughtInPeriod.filter((note) => note.situation.trim()), (note) => note.situation.trim()).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const thoughtIntensity = formatAverageWithSuffix(formatAverage(thoughtInPeriod.map((note) => note.intensity)), "/10");
+  const selfCompassionWords = thoughtInPeriod.filter((note) => note.selfCompassion.trim()).slice(0, 3).map((note) => `- ${note.selfCompassion}`).join("\n") || "記録なし";
   const pendingNotes = consultationNotes.filter((note) => note.status !== "done");
   const doneNotes = consultationNotes.filter((note) => note.status === "done");
   const includedNotes = consultationNotes.filter((note) => note.includeInReport || note.status !== "done").slice(0, 5);
@@ -3069,9 +3495,9 @@ function Report({
   const summary = `過去${period}日間のセルフ記録です。このアプリは診断・治療・服薬指示を行うものではありません。
 ${fewRecordsNote}
 
-気分平均: ${formatAverage(daily.map((record) => record.mood))}/10
-不安平均: ${formatAverage(daily.map((record) => record.anxiety))}/10
-睡眠平均: ${formatAverage(validSleepHours(daily))}時間
+気分平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.mood)), "/10")}
+不安平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.anxiety)), "/10")}
+睡眠平均: ${formatAverageWithSuffix(formatAverage(validSleepHours(daily)), "時間")}
 状態の波が大きかった日: ${waveDays}
 期間内の突発ログ回数: ${sudden.length}件
 多かった状態タグ: ${topTags}
@@ -3081,6 +3507,11 @@ ${fewRecordsNote}
 よく使ったセルフケア: ${topCare}
 実行後に整ったと感じた行動: ${settledCare}
 今は合わなかった行動: ${notFitCare}
+よく出た思考タグ: ${topThoughtTags}
+よく出た場面: ${topThoughtSituations}
+感情の強さの傾向: ${thoughtIntensity}
+自分にかけたい言葉:
+${selfCompassionWords}
 未相談のメモ: ${pendingNotes.length}件
 相談済みのメモ: ${doneNotes.length}件
 
@@ -3098,6 +3529,7 @@ ${monthlySummaryText}
 記録上の傾向として整理してください。
 医師や専門家に相談すべき点を分けてください。
 生活面で見直せそうな候補は、断定せず「可能性」「参考情報」として提示してください。
+思考の傾向として整理し、本人を責める表現は避けてください。
 睡眠、天気、外出、突発ログ、セルフケアの要約も含めてください。
 
 ${summary}`;
@@ -3199,6 +3631,7 @@ function DetailModal({ item, onClose }: { item: DetailItem; onClose: () => void 
           ["外出", item.record.wentOut],
           ["人との接触", item.record.socialContact],
           ["薬・サプリ", item.record.medicine],
+          ["思考タグ", joinTags(item.record.thoughtTags || [])],
           ["今日の主な出来事", item.record.events || "未記入"],
           ["今日のメモ", item.record.memo || "未記入"],
         ]
@@ -3376,12 +3809,12 @@ function MultiChoice({ label, options, values, onChange }: { label: string; opti
   );
 }
 
-function TextArea({ label, helper, value, onChange }: { label: string; helper?: string; value: string; onChange: (value: string) => void }) {
+function TextArea({ label, helper, value, onChange, placeholder }: { label: string; helper?: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
   return (
     <label className="field">
       <span>{label}</span>
       {helper && <small className="helper-text">{helper}</small>}
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={4} />
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={4} />
     </label>
   );
 }
@@ -3448,7 +3881,7 @@ function InsightCard({ insight }: { insight: Insight }) {
   return (
     <article className="insight-card">
       <div className="insight-card-head">
-        <span>{insight.group === "daily" ? "日々の記録" : insight.group === "sudden" ? "突発ログ" : "セルフケア"}</span>
+        <span>{insight.group === "daily" ? "日々の記録" : insight.group === "sudden" ? "突発ログ" : insight.group === "selfcare" ? "セルフケア" : "思考メモ"}</span>
         <strong>{insight.relatedCount}件</strong>
       </div>
       <h3>{insight.title}</h3>
@@ -3466,6 +3899,10 @@ function formatAverage(values: Array<number | null | undefined>) {
   const valid = values.filter(isFiniteNumber);
   if (!valid.length) return "-";
   return (valid.reduce((sum, value) => sum + value, 0) / valid.length).toFixed(1);
+}
+
+function formatAverageWithSuffix(value: string, suffix: string) {
+  return value === "-" ? "記録なし" : `${value}${suffix}`;
 }
 
 function formatScore(value: number | null | undefined) {
@@ -3569,9 +4006,9 @@ function buildMonthlySummaryText(month: string, dailyRecords: DailyRecord[], sud
   const summary = getMonthlySummary(month, dailyRecords, suddenLogs, selfCareLogs);
   return `月間ふり返り（${formatMonthLabel(month)}）
 月間記録日数: ${summary.dailyDays}日
-月間の平均気分: ${summary.averageMood}/10
-月間の平均不安感: ${summary.averageAnxiety}/10
-月間の平均睡眠時間: ${summary.averageSleep}時間
+月間の平均気分: ${formatAverageWithSuffix(summary.averageMood, "/10")}
+月間の平均不安感: ${formatAverageWithSuffix(summary.averageAnxiety, "/10")}
+月間の平均睡眠時間: ${formatAverageWithSuffix(summary.averageSleep, "時間")}
 月間の突発ログ件数: ${summary.suddenCount}件
 月間で多かった状態タグ: ${summary.topTag}
 月間でよく使ったセルフケア: ${summary.topCare}
@@ -3660,7 +4097,7 @@ function groupedAverage<T>(items: T[], keyer: (item: T) => string, valuer: (item
   return [...groups.entries()].map(([key, values]) => [key, formatAverage(values)]);
 }
 
-function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[]) {
+function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[] = []) {
   return [
     ...calculateSleepInsights(dailyRecords),
     ...calculateWeatherInsights(dailyRecords),
@@ -3668,6 +4105,7 @@ function calculateInsights(dailyRecords: DailyRecord[], suddenLogs: SuddenLog[],
     ...calculateSocialInsights(dailyRecords),
     ...calculateSuddenLogInsights(suddenLogs),
     ...calculateSelfCareInsights(selfCareLogs),
+    ...calculateThoughtInsights(thoughtNotes, dailyRecords),
   ].slice(0, 8);
 }
 
@@ -3911,6 +4349,24 @@ function calculateSelfCareInsights(logs: SelfCareLog[]): Insight[] {
   return insights.slice(0, 3);
 }
 
+function calculateThoughtInsights(notes: ThoughtNote[], dailyRecords: DailyRecord[]): Insight[] {
+  const recent = notes.filter((note) => daysAgo(note.date) < 30);
+  const dailyTags = dailyRecords.filter((record) => daysAgo(record.date) < 30).flatMap((record) => record.thoughtTags || []);
+  const tagCounts = countFlat([...recent.flatMap((note) => note.thoughtTags), ...dailyTags]);
+  if (recent.length < 3 && dailyTags.length < 3) return [];
+  const topTag = tagCounts[0];
+  if (!topTag) return [];
+  return [{
+    id: "thought-tags",
+    group: "thought",
+    title: "出やすい思考タグが記録されています",
+    description: `「${topTag[0]}」が${topTag[1]}件記録されています。状態の波が大きいときに出やすい考え方を見つける材料になります。`,
+    relatedCount: topTag[1],
+    action: "場面、睡眠、きっかけ、自分にかけたい言葉を一緒に見返すと、相談時の材料にできます。",
+    note: "記録上の傾向です。責めるためではなく、気づくための参考情報です。",
+  }];
+}
+
 function groupItems<T>(items: T[], keyer: (item: T) => string) {
   const groups = new Map<string, T[]>();
   items.forEach((item) => {
@@ -3932,7 +4388,7 @@ function firstKey(items: [string, number][]) {
 
 function navGroup(screen: Screen) {
   if (screen === "daily" || screen === "sudden" || screen === "records") return "recordHub";
-  if (screen === "analysis" || screen === "report") return "review";
+  if (screen === "analysis" || screen === "report" || screen === "thought") return "review";
   if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
   return screen;
 }
@@ -3955,17 +4411,25 @@ function createConsultationDraft(): ConsultationNote {
   };
 }
 
-function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], notes: ConsultationNote[]) {
+function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[], notes: ConsultationNote[]) {
   const daily = dailyRecords.filter((record) => daysAgo(record.date) < period);
   const sudden = suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period);
   const care = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
-  const insights = calculateInsights(daily, sudden, care);
+  const thoughts = thoughtNotes.filter((note) => daysAgo(note.date) < period);
+  const insights = calculateInsights(daily, sudden, care, thoughts);
   const waveDays = daily.filter(hasLargeWaveScore).map((record) => record.date).join("、") || "目立つ記録なし";
   const topTags = countFlat(sudden.flatMap((log) => log.stateTags)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topTriggers = countFlat(sudden.flatMap((log) => log.triggers)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topSymptoms = countFlat(sudden.flatMap((log) => log.symptoms)).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const topCare = countBy(care, (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
   const settledCare = countBy(care.filter((log) => log.result === "少し整った"), (log) => log.title).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const topThoughtTags = countFlat([
+    ...thoughts.flatMap((note) => note.thoughtTags),
+    ...daily.flatMap((record) => record.thoughtTags || []),
+  ]).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const topThoughtSituations = countBy(thoughts.filter((note) => note.situation.trim()), (note) => note.situation.trim()).slice(0, 3).map(([key]) => key).join("、") || "記録なし";
+  const thoughtIntensity = formatAverageWithSuffix(formatAverage(thoughts.map((note) => note.intensity)), "/10");
+  const compassionLines = thoughts.filter((note) => note.selfCompassion.trim()).slice(0, 3).map((note) => `- ${note.selfCompassion}`).join("\n") || "記録なし";
   const noteLines = notes.length
     ? notes.slice(0, 8).map((note) => `- ${note.title || "相談メモ"}（${targetLabel(note.target)} / ${statusLabel(note.status)}）: ${note.mainTopic || note.recentConcern || note.dontForgetMemo || "内容未記入"}`).join("\n")
     : "相談メモはまだありません。";
@@ -3975,15 +4439,20 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
 
   return `以下は、過去${period}日間のセルフ記録をもとにした相談用メモです。診断や治療判断ではなく、相談時に状態を伝えるための参考情報として作成しています。
 
-期間内の気分平均: ${formatAverage(daily.map((record) => record.mood))}/10
-期間内の不安感平均: ${formatAverage(daily.map((record) => record.anxiety))}/10
-睡眠時間の平均: ${formatAverage(validSleepHours(daily))}時間
+期間内の気分平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.mood)), "/10")}
+期間内の不安感平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.anxiety)), "/10")}
+睡眠時間の平均: ${formatAverageWithSuffix(formatAverage(validSleepHours(daily)), "時間")}
 状態の波が大きかった日: ${waveDays}
 多かった状態タグ: ${topTags}
 多かったきっかけ: ${topTriggers}
 多かった身体のサイン: ${topSymptoms}
 よく使ったセルフケア: ${topCare}
 整いやすい可能性があったセルフケア: ${settledCare}
+よく出た思考タグ: ${topThoughtTags}
+よく出た場面: ${topThoughtSituations}
+感情の強さの傾向: ${thoughtIntensity}
+自分にかけたい言葉:
+${compassionLines}
 
 記録から見える傾向:
 ${insightLines}
@@ -4014,6 +4483,7 @@ function buildConsultationAiPrompt(summary: string) {
 治療判断をしないでください。
 服薬やサプリの指示はしないでください。
 記録上の傾向として整理してください。
+思考の傾向として整理し、本人を責める表現は避けてください。
 医師や専門家に相談した方がよい点を分けてください。
 生活面で見直せそうな候補があれば、断定せずに提示してください。
 
@@ -4226,6 +4696,7 @@ function normalizeBackupData(data: unknown): BackupData {
       selfCarePlans: [],
       selfCareLogs: [],
       consultationNotes: [],
+      thoughtNotes: [],
       privacySettings: toBackupPrivacySettings(defaultPrivacySettings()),
       habitSettings: defaultHabitSettings(),
       reminderDismissals: [],
@@ -4240,6 +4711,7 @@ function normalizeBackupData(data: unknown): BackupData {
     selfCarePlans?: Partial<SelfCarePlan>[];
     selfCareLogs?: Partial<SelfCareLog>[];
     consultationNotes?: Partial<ConsultationNote>[];
+    thoughtNotes?: Partial<ThoughtNote>[];
     privacySettings?: BackupPrivacySettings;
     habitSettings?: Partial<HabitSettings>;
     reminderDismissals?: Partial<ReminderDismissal>[];
@@ -4252,6 +4724,7 @@ function normalizeBackupData(data: unknown): BackupData {
   const plans = source.selfCarePlans || [];
   const logs = source.selfCareLogs || [];
   const notes = source.consultationNotes || [];
+  const thoughtNotes = source.thoughtNotes || [];
   if (!Array.isArray(daily) || !Array.isArray(sudden)) throw new Error("Invalid backup");
 
   return {
@@ -4261,6 +4734,7 @@ function normalizeBackupData(data: unknown): BackupData {
     selfCarePlans: Array.isArray(plans) ? plans.map(normalizeSelfCarePlan) : [],
     selfCareLogs: Array.isArray(logs) ? logs.map(normalizeSelfCareLog) : [],
     consultationNotes: Array.isArray(notes) ? notes.map(normalizeConsultationNote) : [],
+    thoughtNotes: Array.isArray(thoughtNotes) ? thoughtNotes.map(normalizeThoughtNote) : [],
     privacySettings: source.privacySettings ? {
       isLockEnabled: false,
       autoLockMinutes: normalizeAutoLock(source.privacySettings.autoLockMinutes),
@@ -4276,7 +4750,7 @@ function normalizeBackupData(data: unknown): BackupData {
 
 function toDailyCsv(records: DailyRecord[]) {
   const rows = [
-    ["記録日", "気分", "不安度", "イライラ度", "疲労度", "睡眠時間", "睡眠の質", "天気", "食事", "運動", "外出", "人との接触", "薬・サプリ", "今日の主な出来事", "今日のメモ"],
+    ["記録日", "気分", "不安度", "イライラ度", "疲労度", "睡眠時間", "睡眠の質", "天気", "食事", "運動", "外出", "人との接触", "薬・サプリ", "思考タグ", "今日の主な出来事", "今日のメモ"],
     ...records.map((record) => [
       record.date,
       record.mood,
@@ -4291,6 +4765,7 @@ function toDailyCsv(records: DailyRecord[]) {
       record.wentOut,
       record.socialContact,
       record.medicine,
+      (record.thoughtTags || []).join("、"),
       record.events,
       record.memo,
     ]),
@@ -4344,6 +4819,25 @@ function toConsultationCsv(notes: ConsultationNote[]) {
   return `\uFEFF${rows.map(csvRow).join("\n")}`;
 }
 
+function toThoughtCsv(notes: ThoughtNote[]) {
+  const rows = [
+    ["発生日", "場面", "頭に浮かんだ考え", "感情", "感情の強さ", "思考タグ", "別の見方メモ", "自分にかけたい言葉", "関連する行動", "メモ"],
+    ...notes.map((note) => [
+      note.date,
+      note.situation,
+      note.thought,
+      note.emotion,
+      note.intensity ?? "未入力",
+      note.thoughtTags.join("、"),
+      note.alternativeView,
+      note.selfCompassion,
+      note.relatedAction,
+      note.memo,
+    ]),
+  ];
+  return `\uFEFF${rows.map(csvRow).join("\n")}`;
+}
+
 function csvRow(values: Array<string | number | null>) {
   return values.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(",");
 }
@@ -4367,6 +4861,7 @@ function normalizeDailyRecord(record: Partial<DailyRecord>): DailyRecord {
     medicine: record.medicine || "該当なし",
     events: record.events || "",
     memo: record.memo || "",
+    thoughtTags: normalizeThoughtTags(record.thoughtTags),
     createdAt: timestamp,
     updatedAt: record.updatedAt || timestamp,
   };
@@ -4436,6 +4931,26 @@ function normalizeConsultationNote(note: Partial<ConsultationNote>): Consultatio
   };
 }
 
+function normalizeThoughtNote(note: Partial<ThoughtNote>): ThoughtNote {
+  const timestamp = note.createdAt || nowIso();
+  return {
+    id: note.id || newId(),
+    date: note.date || today(),
+    situation: note.situation || "",
+    thought: note.thought || "",
+    emotion: note.emotion || "",
+    intensity: normalizeScore(note.intensity),
+    thoughtTags: normalizeThoughtTags(note.thoughtTags),
+    alternativeView: note.alternativeView || "",
+    selfCompassion: note.selfCompassion || "",
+    relatedAction: note.relatedAction || "",
+    memo: note.memo || "",
+    sourceLogId: note.sourceLogId,
+    createdAt: timestamp,
+    updatedAt: note.updatedAt || timestamp,
+  };
+}
+
 function normalizeSelfCareCategory(category?: string): SelfCareCategory {
   return selfCareCategories.includes(category as SelfCareCategory) ? (category as SelfCareCategory) : "体を整える";
 }
@@ -4453,6 +4968,10 @@ function normalizeScore(value: unknown) {
 function normalizeStateTags(tags?: string[], legacyState?: string) {
   const source = tags?.length ? tags : legacyState ? [legacyState] : [];
   return source.map(mapLegacyStateTag).filter(Boolean);
+}
+
+function normalizeThoughtTags(tags?: string[]) {
+  return Array.isArray(tags) ? tags.filter((tag) => typeof tag === "string" && tag.trim()).map((tag) => tag.trim()) : [];
 }
 
 function mapLegacyStateTag(tag: string) {
@@ -4493,7 +5012,13 @@ function formatDateTime(iso: string) {
   });
 }
 
-createRoot(document.getElementById("root")!).render(
+type RootElement = HTMLElement & { selfCompassRoot?: ReturnType<typeof createRoot> };
+
+const rootElement = document.getElementById("root") as RootElement;
+const root = rootElement.selfCompassRoot || createRoot(rootElement);
+rootElement.selfCompassRoot = root;
+
+root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,
