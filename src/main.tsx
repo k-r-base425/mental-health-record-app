@@ -131,7 +131,7 @@ type Insight = {
   group: "daily" | "sudden" | "selfcare";
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "all" };
@@ -354,6 +354,8 @@ function App() {
   const [isLocked, setIsLocked] = useState(() => loadPrivacySettings().isLockEnabled);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
+  const [newDailyDate, setNewDailyDate] = useState<string | null>(null);
+  const [newSuddenDate, setNewSuddenDate] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
@@ -562,6 +564,14 @@ function App() {
   const openDaily = () => {
     setFlash("");
     setEditingDaily(dailyRecords.find((record) => record.date === today()) || null);
+    setNewDailyDate(null);
+    setScreen("daily");
+  };
+
+  const openDailyForDate = (date: string) => {
+    setFlash("");
+    setEditingDaily(dailyRecords.find((record) => record.date === date) || null);
+    setNewDailyDate(date);
     setScreen("daily");
   };
 
@@ -580,6 +590,14 @@ function App() {
   const openSudden = () => {
     setFlash("");
     setEditingSudden(null);
+    setNewSuddenDate(null);
+    setScreen("sudden");
+  };
+
+  const openSuddenForDate = (date: string) => {
+    setFlash("");
+    setEditingSudden(null);
+    setNewSuddenDate(date);
     setScreen("sudden");
   };
 
@@ -596,6 +614,11 @@ function App() {
   const openReport = () => {
     setFlash("");
     setScreen("report");
+  };
+
+  const openCalendar = () => {
+    setFlash("");
+    setScreen("calendar");
   };
 
   const openConsultation = () => {
@@ -666,6 +689,7 @@ function App() {
             onLock={lockApp}
             onDaily={openDaily}
             onSudden={openSudden}
+            onCalendar={openCalendar}
             onDismissReminder={dismissReminderToday}
           />
         )}
@@ -676,10 +700,11 @@ function App() {
             onDaily={openDaily}
             onSudden={openSudden}
             onRecords={openRecords}
+            onCalendar={openCalendar}
           />
         )}
-        {screen === "daily" && <DailyForm key={editingDaily?.id || "new-daily"} initial={editingDaily} onSave={saveDaily} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
-        {screen === "sudden" && <SuddenForm key={editingSudden?.id || "new-sudden"} initial={editingSudden} onSave={saveSudden} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
+        {screen === "daily" && <DailyForm key={editingDaily?.id || newDailyDate || "new-daily"} initial={editingDaily} initialDate={newDailyDate} onSave={saveDaily} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
+        {screen === "sudden" && <SuddenForm key={editingSudden?.id || newSuddenDate || "new-sudden"} initial={editingSudden} initialDate={newSuddenDate} onSave={saveSudden} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
         {screen === "records" && (
           <RecordsScreen
             dailyRecords={dailyRecords}
@@ -709,10 +734,23 @@ function App() {
             onAnalysis={openAnalysis}
             onReport={openReport}
             onConsultation={openConsultation}
+            onCalendar={openCalendar}
           />
         )}
         {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} />}
         {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} onOpenConsultation={openConsultation} />}
+        {screen === "calendar" && (
+          <CalendarScreen
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            selfCareLogs={selfCareLogs}
+            consultationNotes={consultationNotes}
+            privateDisplayMode={privacySettings.privateDisplayMode}
+            onEditDaily={openDailyForDate}
+            onAddDaily={openDailyForDate}
+            onAddSudden={openSuddenForDate}
+          />
+        )}
         {screen === "selfcare" && (
           <SelfCareScreen
             plans={selfCarePlans}
@@ -1078,6 +1116,7 @@ function Home({
   onConsultation,
   onLock,
   onCareDone,
+  onCalendar,
   onDismissReminder,
 }: {
   dailyRecords: DailyRecord[];
@@ -1094,6 +1133,7 @@ function Home({
   onConsultation: () => void;
   onLock: () => void;
   onCareDone: (plan: SelfCarePlan) => void;
+  onCalendar: () => void;
   onDismissReminder: () => void;
 }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
@@ -1187,6 +1227,7 @@ function Home({
         ) : (
           <p className="soft-text">記録が増えると、睡眠・天気・外出などとの関係が見えやすくなります。</p>
         )}
+        <button className="secondary-btn" onClick={onCalendar}>月間ふり返りを見る</button>
       </section>
 
       <section className="section-block">
@@ -1223,7 +1264,7 @@ function Home({
   );
 }
 
-function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; onDaily: () => void; onSudden: () => void; onRecords: () => void }) {
+function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords, onCalendar }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; onDaily: () => void; onSudden: () => void; onRecords: () => void; onCalendar: () => void }) {
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const recentDaily = [...dailyRecords].sort((a, b) => b.date.localeCompare(a.date))[0];
   const recentSudden = [...suddenLogs].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))[0];
@@ -1244,6 +1285,7 @@ function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords }: {
           <button className="primary-btn" onClick={onDaily}>{todayRecord ? "今日の記録を確認・編集" : "今日の記録をする"}</button>
           <button className="urgent-btn" onClick={onSudden}>突発ログを記録</button>
           <button className="secondary-btn no-margin" onClick={onRecords}>記録一覧を見る</button>
+          <button className="secondary-btn no-margin" onClick={onCalendar}>カレンダーを見る</button>
         </div>
       </section>
 
@@ -1265,6 +1307,7 @@ function ReviewHub({
   onAnalysis,
   onReport,
   onConsultation,
+  onCalendar,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -1272,6 +1315,7 @@ function ReviewHub({
   onAnalysis: () => void;
   onReport: () => void;
   onConsultation: () => void;
+  onCalendar: () => void;
 }) {
   const insight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs)[0];
 
@@ -1294,6 +1338,7 @@ function ReviewHub({
         <h2>開く</h2>
         <div className="data-actions">
           <button className="primary-btn" onClick={onAnalysis}>ふり返りを見る</button>
+          <button className="secondary-btn no-margin" onClick={onCalendar}>カレンダーを見る</button>
           <button className="secondary-btn no-margin" onClick={onReport}>共有用まとめを作る</button>
           <button className="secondary-btn no-margin" onClick={onConsultation}>相談前まとめを作る</button>
           <button className="secondary-btn no-margin" onClick={onConsultation}>AI相談文を作る</button>
@@ -1491,6 +1536,160 @@ function HabitSupportScreen({
           <Metric label="よく記録する時間" value={privateDisplayMode ? "記録状況あり" : summary.commonTime || "まだ少なめ"} />
         </div>
         <button className="secondary-btn" onClick={onDaily}>今日の記録へ</button>
+      </section>
+    </section>
+  );
+}
+
+function CalendarScreen({
+  dailyRecords,
+  suddenLogs,
+  selfCareLogs,
+  consultationNotes,
+  privateDisplayMode,
+  onEditDaily,
+  onAddDaily,
+  onAddSudden,
+}: {
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  selfCareLogs: SelfCareLog[];
+  consultationNotes: ConsultationNote[];
+  privateDisplayMode: boolean;
+  onEditDaily: (date: string) => void;
+  onAddDaily: (date: string) => void;
+  onAddSudden: (date: string) => void;
+}) {
+  const [currentMonth, setCurrentMonth] = useState(today().slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState(today());
+  const monthDays = buildCalendarDays(currentMonth);
+  const summary = getMonthlySummary(currentMonth, dailyRecords, suddenLogs, selfCareLogs);
+  const selectedDaily = dailyRecords.find((record) => record.date === selectedDate);
+  const selectedSudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === selectedDate).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  const selectedCare = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === selectedDate).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const selectedNotes = consultationNotes.filter((note) => note.updatedAt.slice(0, 10) === selectedDate);
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">月間ふり返り</p>
+          <h1>カレンダー</h1>
+        </div>
+      </header>
+      <p className="soft-text">この月の記録上の傾向です。参考情報として見てください。原因を断定するものではありません。</p>
+
+      <section className="section-block calendar-panel">
+        <div className="calendar-toolbar">
+          <button className="ghost-btn" onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}>前月</button>
+          <h2>{formatMonthLabel(currentMonth)}</h2>
+          <button className="ghost-btn" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>翌月</button>
+        </div>
+        <div className="calendar-weekdays">
+          {["日", "月", "火", "水", "木", "金", "土"].map((day) => <span key={day}>{day}</span>)}
+        </div>
+        <div className="calendar-grid">
+          {monthDays.map((date) => {
+            const dayData = getDayCalendarData(date, dailyRecords, suddenLogs, selfCareLogs);
+            const isCurrentMonth = date.startsWith(currentMonth);
+            const isToday = date === today();
+            const isSelected = date === selectedDate;
+            const hasAny = Boolean(dayData.daily || dayData.suddenCount || dayData.careCount);
+            return (
+              <button
+                className={[
+                  "calendar-day",
+                  isCurrentMonth ? "" : "muted",
+                  isToday ? "today" : "",
+                  isSelected ? "selected" : "",
+                  hasAny ? "has-records" : "",
+                ].filter(Boolean).join(" ")}
+                key={date}
+                onClick={() => setSelectedDate(date)}
+                type="button"
+              >
+                <span className="calendar-date-number">{Number(date.slice(8, 10))}</span>
+                <span className="calendar-markers">
+                  {dayData.daily && <i>記録</i>}
+                  {dayData.suddenCount > 0 && <i>ログ</i>}
+                  {dayData.careCount > 0 && <i>ケア</i>}
+                </span>
+                {!privateDisplayMode && dayData.daily && (
+                  <span className="calendar-small">
+                    {isFiniteNumber(dayData.daily.mood) ? `気分 ${dayData.daily.mood}` : ""}
+                    {hasSleepHours(dayData.daily) ? `睡眠 ${dayData.daily.sleepHours}h` : ""}
+                  </span>
+                )}
+                {privateDisplayMode && hasAny && <span className="calendar-small">記録あり</span>}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="section-block">
+        <h2>月間サマリー</h2>
+        <div className="summary-list">
+          <Metric label="記録日数" value={privateDisplayMode ? "記録状況あり" : `${summary.dailyDays}日`} />
+          <Metric label="突発ログ" value={privateDisplayMode ? "記録状況あり" : `${summary.suddenCount}件`} />
+          <Metric label="セルフケア" value={privateDisplayMode ? "記録状況あり" : `${summary.careCount}回`} />
+          <Metric label="平均気分" value={privateDisplayMode ? "記録状況あり" : `${summary.averageMood}/10`} />
+          <Metric label="平均不安" value={privateDisplayMode ? "記録状況あり" : `${summary.averageAnxiety}/10`} />
+          <Metric label="平均睡眠" value={privateDisplayMode ? "記録状況あり" : `${summary.averageSleep}h`} />
+          <Metric label="波が大きい日" value={privateDisplayMode ? "記録状況あり" : `${summary.waveDays}日`} />
+          <Metric label="状態タグ" value={privateDisplayMode ? "記録あり" : summary.topTag} />
+          <Metric label="よく使ったケア" value={privateDisplayMode ? "記録あり" : summary.topCare} />
+        </div>
+      </section>
+
+      <section className="section-block day-detail-card">
+        <h2>{selectedDate} の記録</h2>
+        {selectedDaily ? (
+          <div className="detail-row">
+            <span>日々の記録</span>
+            <strong>{privateDisplayMode ? "詳細は非表示です" : `気分 ${formatScore(selectedDaily.mood)} / 不安 ${formatScore(selectedDaily.anxiety)} / 睡眠 ${formatSleepHours(selectedDaily.sleepHours)}`}</strong>
+          </div>
+        ) : (
+          <p className="empty-box">日々の記録はまだありません。</p>
+        )}
+
+        <h3>突発ログ</h3>
+        {selectedSudden.length === 0 ? <p className="empty-box">この日の突発ログはありません。</p> : (
+          <div className="detail-list">
+            {selectedSudden.map((log) => (
+              <div className="detail-row" key={log.id}>
+                <span>{formatDateTime(log.occurredAt)}</span>
+                <strong>{privateDisplayMode ? "ログあり" : `${joinTags(log.stateTags)} / 強さ ${formatScore(log.intensity)}`}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <h3>セルフケア</h3>
+        {selectedCare.length === 0 ? <p className="empty-box">この日のセルフケア記録はありません。</p> : (
+          <div className="detail-list">
+            {selectedCare.map((log) => (
+              <div className="detail-row" key={log.id}>
+                <span>{formatDateTime(log.createdAt)}</span>
+                <strong>{privateDisplayMode ? "ケアあり" : `${log.title} / ${log.result}`}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {selectedNotes.length > 0 && (
+          <>
+            <h3>相談ノート更新</h3>
+            <p className="soft-text">{privateDisplayMode ? "相談ノートの更新があります。" : `${selectedNotes.length}件の更新があります。`}</p>
+          </>
+        )}
+
+        <div className="data-actions">
+          <button className="secondary-btn no-margin" onClick={() => selectedDaily ? onEditDaily(selectedDate) : onAddDaily(selectedDate)}>
+            {selectedDaily ? "この日の記録を編集" : "この日の記録を追加"}
+          </button>
+          <button className="secondary-btn no-margin" onClick={() => onAddSudden(selectedDate)}>この日に突発ログを追加</button>
+        </div>
       </section>
     </section>
   );
@@ -2347,11 +2546,13 @@ function RecordsScreen({
 
 function DailyForm({
   initial,
+  initialDate,
   onSave,
   onCancel,
   onDirtyChange,
 }: {
   initial: DailyRecord | null;
+  initialDate: string | null;
   onSave: (record: DailyRecord) => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -2359,7 +2560,7 @@ function DailyForm({
   const [form, setForm] = useState<DailyRecord>(
     initial || {
       id: newId(),
-      date: today(),
+      date: initialDate || today(),
       mood: null,
       anxiety: null,
       irritability: null,
@@ -2491,11 +2692,13 @@ function DailyForm({
 
 function SuddenForm({
   initial,
+  initialDate,
   onSave,
   onCancel,
   onDirtyChange,
 }: {
   initial: SuddenLog | null;
+  initialDate: string | null;
   onSave: (log: SuddenLog) => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -2503,7 +2706,7 @@ function SuddenForm({
   const [form, setForm] = useState<SuddenLog>(
     initial || {
       id: newId(),
-      occurredAt: nowIso(),
+      occurredAt: initialDate ? dateWithCurrentTimeIso(initialDate) : nowIso(),
       stateTags: [],
       intensity: null,
       triggers: [],
@@ -2733,6 +2936,7 @@ function Report({
   const careInPeriod = selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
   const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3;
   const reportInsights = calculateInsights(daily, sudden, careInPeriod);
+  const monthlySummaryText = buildMonthlySummaryText(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs);
   const insightSummary = reportInsights.length
     ? reportInsights.slice(0, 5).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
     : "記録が少ないため、傾向は参考程度です。もう少し記録が増えると、睡眠・天気・外出・きっかけ・セルフケアとの関係が見えやすくなります。";
@@ -2775,6 +2979,8 @@ ${consultationSummary}
 
 記録上見えている傾向:
 ${insightSummary}
+
+${monthlySummaryText}
 
 相談時に伝えたいこと: ${doctorMemo || "未記入"}`;
 
@@ -3181,6 +3387,78 @@ function daysAgo(date: string) {
   const start = new Date(today()).getTime();
   const target = new Date(date).getTime();
   return Math.floor((start - target) / 86400000);
+}
+
+function dateWithCurrentTimeIso(date: string) {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return new Date(`${date}T${hours}:${minutes}:00`).toISOString();
+}
+
+function addMonths(month: string, amount: number) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const date = new Date(year, monthNumber - 1 + amount, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(month: string) {
+  const [year, monthNumber] = month.split("-");
+  return `${year}年${Number(monthNumber)}月`;
+}
+
+function buildCalendarDays(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const first = new Date(year, monthNumber - 1, 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return localDateString(date);
+  });
+}
+
+function localDateString(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getDayCalendarData(date: string, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[]) {
+  return {
+    daily: dailyRecords.find((record) => record.date === date),
+    suddenCount: suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === date).length,
+    careCount: selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === date).length,
+  };
+}
+
+function getMonthlySummary(month: string, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[]) {
+  const daily = dailyRecords.filter((record) => record.date.startsWith(month));
+  const sudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 7) === month);
+  const care = selfCareLogs.filter((log) => log.createdAt.slice(0, 7) === month);
+  return {
+    dailyDays: new Set(daily.map((record) => record.date)).size,
+    suddenCount: sudden.length,
+    careCount: care.length,
+    averageMood: formatAverage(daily.map((record) => record.mood)),
+    averageAnxiety: formatAverage(daily.map((record) => record.anxiety)),
+    averageSleep: formatAverage(validSleepHours(daily)),
+    waveDays: daily.filter(hasLargeWaveScore).length,
+    topTag: firstKey(countFlat(sudden.flatMap((log) => log.stateTags))),
+    topCare: firstKey(countBy(care, (log) => log.title)),
+  };
+}
+
+function buildMonthlySummaryText(month: string, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[]) {
+  const summary = getMonthlySummary(month, dailyRecords, suddenLogs, selfCareLogs);
+  return `月間ふり返り（${formatMonthLabel(month)}）
+月間記録日数: ${summary.dailyDays}日
+月間の平均気分: ${summary.averageMood}/10
+月間の平均不安感: ${summary.averageAnxiety}/10
+月間の平均睡眠時間: ${summary.averageSleep}時間
+月間の突発ログ件数: ${summary.suddenCount}件
+月間で多かった状態タグ: ${summary.topTag}
+月間でよく使ったセルフケア: ${summary.topCare}
+この内容は記録上の傾向です。原因を断定するものではありません。`;
 }
 
 function getHabitSummary(records: DailyRecord[]) {
