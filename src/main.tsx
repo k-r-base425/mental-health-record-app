@@ -190,6 +190,22 @@ type Insight = {
   group: "daily" | "sudden" | "selfcare" | "thought" | "ifthen";
 };
 
+type StabilityPart = {
+  key: "basic" | "sleep" | "lifestyle" | "wave" | "thought" | "selfcare" | "ifthen" | "recording";
+  label: string;
+  score: number | null;
+  note: string;
+};
+
+type StabilityScore = {
+  score: number | null;
+  parts: StabilityPart[];
+  isReference: boolean;
+  note: string;
+  supportText: string;
+  waveText: string;
+};
+
 type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen";
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
@@ -1508,19 +1524,21 @@ function Home({
   const habitSummary = getHabitSummary(dailyRecords);
   const showReminder = shouldShowHabitReminder(habitSettings, dailyRecords, reminderDismissals);
   const showRestart = shouldShowRestartSupport(dailyRecords, reminderDismissals);
-  const score = homeMoodScore(todayRecord, dailyRecords);
+  const stability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const score = stability.score;
   const anxietyValue = todayRecord?.anxiety ?? nullableAverage(dailyRecords.slice(-7).map((record) => record.anxiety));
   const todayCareCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
+  const todayIfThenCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
   const trendRecords = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date)).slice(-12);
 
   return (
     <section className="home-screen">
       <header className="home-topbar">
         <button className="round-icon-btn" onClick={onHabit} aria-label="習慣サポートを開く" type="button">☼</button>
-        <div className="home-date">
+        <div className="home-date" aria-label={`${today().slice(0, 4)}年 ${formatJapaneseDate(today())} ${weekdayLabel(today())}`}>
           <span>{today().slice(0, 4)}</span>
           <strong>{formatJapaneseDate(today())}</strong>
-          <span>{weekdayLabel(today())}</span>
+          <span>{weekdayShortLabel(today())}</span>
         </div>
         <button className="round-icon-btn" onClick={onLock} aria-label="ロックする" type="button">…</button>
       </header>
@@ -1562,10 +1580,35 @@ function Home({
           <div className="mood-ring-inner">
             <p>{privateDisplayMode ? "今日の状態" : score === null ? "記録待ち" : `今日の安定度 ${score}%`}</p>
             <strong>{privateDisplayMode ? "記録あり" : score ?? "-"}</strong>
-            <span>Mood Score</span>
+            <span>{stability.isReference ? "参考スコア" : "Stability Score"}</span>
             <i>☘</i>
           </div>
         </div>
+      </section>
+
+      <section className="section-block stability-card" aria-label="安定度の内訳">
+        <div className="section-title-row">
+          <h2>安定度の内訳</h2>
+          <span className="soft-pill">{stability.isReference ? "参考値" : "記録上"}</span>
+        </div>
+        <p className="soft-text">{privateDisplayMode ? "内訳は非表示です。" : stability.note}</p>
+        {!privateDisplayMode && (
+          <div className="stability-breakdown">
+            {stability.parts.map((part) => (
+              <div className="stability-row" key={part.key}>
+                <div>
+                  <strong>{part.label}</strong>
+                  <span>{part.note}</span>
+                </div>
+                <div className="stability-bar" aria-label={`${part.label} ${part.score === null ? "記録なし" : `${part.score}%`}`}>
+                  <i style={{ width: `${part.score ?? 0}%` }} />
+                </div>
+                <em>{part.score === null ? "記録なし" : `${part.score}%`}</em>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="tiny-note">このスコアは診断や治療判断ではなく、記録上の参考情報です。</p>
       </section>
 
       <section className="home-summary-cards" aria-label="今日のサマリー">
@@ -1580,9 +1623,9 @@ function Home({
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : isFiniteNumber(anxietyValue) ? Math.round(anxietyValue * 10) : "-"}</strong>
         </button>
         <button className="summary-tile" onClick={onSelfCare} type="button">
-          <span className="tile-icon">♧</span>
-          <span>活動</span>
-          <strong>{privateDisplayMode && todayCareCount > 0 ? "記録あり" : `${todayCareCount}回`}</strong>
+          <span className="tile-icon">{todayIfThenCount > 0 ? "↗" : "♧"}</span>
+          <span>{todayIfThenCount > 0 ? "If-Then" : "活動"}</span>
+          <strong>{privateDisplayMode && (todayCareCount > 0 || todayIfThenCount > 0) ? "記録あり" : todayIfThenCount > 0 ? `${todayIfThenCount}回` : `${todayCareCount}回`}</strong>
         </button>
       </section>
 
@@ -4082,6 +4125,8 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
   const thoughtSituationCounts = countBy(thoughtNotes.filter((note) => note.situation.trim()), (note) => note.situation.trim());
   const alternativeCount = thoughtNotes.filter((note) => note.alternativeView.trim()).length;
   const selfCompassionCount = thoughtNotes.filter((note) => note.selfCompassion.trim()).length;
+  const todayStability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const recentStability = summarizeStabilityPeriod(7, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const topTrigger = triggerCounts[0]?.[0];
   const topStateTag = suddenByTag[0]?.[0];
   const topThoughtTag = thoughtTagCounts[0]?.[0];
@@ -4100,6 +4145,18 @@ function Analysis({ dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThen
         <h1>分析</h1>
       </header>
       <p className="soft-text">記録上の傾向です。関連している可能性があります。参考情報として見てください。医師や専門家に相談する材料として使えます。</p>
+
+      <section className="section-block stability-card">
+        <h2>安定度スコア</h2>
+        <p className="soft-text">状態の波の小ささや整いやすさを、入力済みの記録だけから見た参考情報です。</p>
+        <div className="summary-list">
+          <Metric label="今日の安定度" value={todayStability.score === null ? "記録待ち" : `${todayStability.score}%`} />
+          <Metric label="7日平均" value={recentStability.average === null ? "記録なし" : `${recentStability.average}%`} />
+          <Metric label="支えていた要素" value={recentStability.supportText} />
+          <Metric label="見返しポイント" value={recentStability.waveText} />
+        </div>
+        <p className="tiny-note">このスコアは診断や治療判断ではなく、記録上の参考情報です。</p>
+      </section>
 
       <section className="section-block insights-section">
         <h2>記録から見える傾向</h2>
@@ -4250,6 +4307,8 @@ function Report({
   const ifThenLogsInPeriod = ifThenLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period);
   const hasFewRecords = daily.length < 3 && sudden.length < 2 && careInPeriod.length < 3 && thoughtInPeriod.length < 3 && ifThenLogsInPeriod.length < 3;
   const reportInsights = calculateInsights(daily, sudden, careInPeriod, thoughtInPeriod, ifThenPlans, ifThenLogsInPeriod);
+  const todayStability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const stabilitySummary = summarizeStabilityPeriod(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const monthlySummaryText = buildMonthlySummaryText(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs);
   const insightSummary = reportInsights.length
     ? reportInsights.slice(0, 5).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
@@ -4296,6 +4355,10 @@ ${fewRecordsNote}
 気分平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.mood)), "/10")}
 不安平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.anxiety)), "/10")}
 睡眠平均: ${formatAverageWithSuffix(formatAverage(validSleepHours(daily)), "時間")}
+今日の安定度: ${todayStability.score === null ? "記録待ち" : `${todayStability.score}%`}
+期間平均の安定度: ${stabilitySummary.average === null ? "記録なし" : `${stabilitySummary.average}%`}
+安定度を支えていた要素: ${stabilitySummary.supportText}
+状態の波を見返す材料: ${stabilitySummary.waveText}
 状態の波が大きかった日: ${waveDays}
 期間内の突発ログ回数: ${sudden.length}件
 多かった状態タグ: ${topTags}
@@ -4349,6 +4412,16 @@ ${summary}`;
       {hasFewRecords && <div className="notice">記録が少ないため参考程度です。無理に分析せず、共有用の整理メモとして使えます。</div>}
       <Choice label="期間" options={["7日間", "14日間", "30日間"]} value={`${period}日間`} onChange={(value) => setPeriod(Number(value.replace("日間", "")))} />
       <TextArea label="相談時に伝えたいことメモ" value={doctorMemo} onChange={setDoctorMemo} />
+      <section className="section-block stability-card">
+        <h2>安定度の参考情報</h2>
+        <div className="summary-list">
+          <Metric label="今日" value={todayStability.score === null ? "記録待ち" : `${todayStability.score}%`} />
+          <Metric label={`${period}日平均`} value={stabilitySummary.average === null ? "記録なし" : `${stabilitySummary.average}%`} />
+          <Metric label="支えていた要素" value={stabilitySummary.supportText} />
+          <Metric label="見返しポイント" value={stabilitySummary.waveText} />
+        </div>
+        <p className="tiny-note">診断や治療判断ではなく、記録上の参考情報です。</p>
+      </section>
       <section className="section-block data-card">
         <h2>相談ノート</h2>
         <p className="soft-text">未相談のメモ {pendingNotes.length}件 / 相談済みのメモ {doneNotes.length}件。診察前まとめは相談ノート画面で作れます。</p>
@@ -4742,12 +4815,6 @@ function hasSleepHours(record: DailyRecord) {
   return typeof record.sleepHours === "number" && Number.isFinite(record.sleepHours);
 }
 
-function homeMoodScore(todayRecord: DailyRecord | undefined, records: DailyRecord[]) {
-  if (todayRecord && isFiniteNumber(todayRecord.mood)) return Math.round(todayRecord.mood * 10);
-  const recentAverage = nullableAverage([...records].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7).map((record) => record.mood));
-  return recentAverage === null ? null : Math.round(recentAverage * 10);
-}
-
 function formatJapaneseDate(date: string) {
   const parsed = new Date(`${date}T00:00:00`);
   return `${parsed.getMonth() + 1}月${parsed.getDate()}日`;
@@ -4756,6 +4823,165 @@ function formatJapaneseDate(date: string) {
 function weekdayLabel(date: string) {
   const labels = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"];
   return labels[new Date(`${date}T00:00:00`).getDay()];
+}
+
+function weekdayShortLabel(date: string) {
+  const labels = ["日", "月", "火", "水", "木", "金", "土"];
+  return labels[new Date(`${date}T00:00:00`).getDay()];
+}
+
+function calculateStabilityScore(date: string, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[], ifThenPlans: IfThenPlan[], ifThenLogs: IfThenLog[]): StabilityScore {
+  const daily = dailyRecords.find((record) => record.date === date);
+  const recentDates = new Set(dailyRecords.filter((record) => daysAgo(record.date) >= 0 && daysAgo(record.date) < 7).map((record) => record.date));
+  const sudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === date);
+  const thoughts = thoughtNotes.filter((note) => note.date === date);
+  const care = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === date);
+  const ifThen = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === date);
+  const habitPlanIds = new Set(ifThenHabitItems(summarizeIfThenScores(ifThenPlans, ifThenLogs)).map(([planId]) => planId));
+
+  const basicValues = daily ? [
+    scoreHighGood(daily.mood),
+    scoreLowGood(daily.anxiety),
+    scoreLowGood(daily.irritability),
+    scoreLowGood(daily.fatigue),
+  ] : [];
+  const sleepValues = daily ? [
+    scoreSleepHours(daily.sleepHours),
+    scoreSleepQuality(daily.sleepQuality),
+  ] : [];
+  const lifestyleValues = daily ? [
+    scoreMeal(daily.meal),
+    scoreExercise(daily.exercise),
+    daily.wentOut === "あり" ? 72 : daily.wentOut === "なし" ? 58 : null,
+  ] : [];
+  const suddenIntensity = nullableAverage(sudden.map((log) => log.intensity));
+  const waveValues = sudden.length ? [
+    clampScore(88 - Math.min(sudden.length, 5) * 9),
+    suddenIntensity === null ? null : clampScore(92 - suddenIntensity * 5),
+    clampScore(90 - Math.min(countFlat(sudden.flatMap((log) => log.stateTags)).length, 10) * 3),
+    clampScore(90 - Math.min(countFlat(sudden.flatMap((log) => log.symptoms)).length, 10) * 3),
+  ] : daily ? [78] : [];
+  const thoughtIntensity = nullableAverage(thoughts.map((note) => note.intensity));
+  const thoughtValues = thoughts.length ? [
+    clampScore(90 - Math.min(thoughts.length, 5) * 5),
+    thoughtIntensity === null ? null : clampScore(92 - thoughtIntensity * 5),
+    clampScore(88 - Math.min(countFlat(thoughts.flatMap((note) => note.thoughtTags)).length, 10) * 3),
+  ] : daily ? [74] : [];
+  const careValues = care.length ? [
+    clampScore(68 + Math.min(care.length, 3) * 7),
+    ...care.map((log) => scoreSelfCareResult(log.result)),
+  ] : [];
+  const ifThenValues = ifThen.length ? [
+    clampScore(68 + Math.min(ifThen.length, 3) * 6),
+    nullableAverage(ifThen.map((log) => log.fitScore)) === null ? null : nullableAverage(ifThen.map((log) => log.fitScore))! * 10,
+    nullableAverage(ifThen.map((log) => log.easeScore)) === null ? null : nullableAverage(ifThen.map((log) => log.easeScore))! * 10,
+    ifThen.some((log) => habitPlanIds.has(log.planId)) ? 84 : null,
+  ] : [];
+  const recordingValues = [
+    daily ? 76 : null,
+    recentDates.size ? clampScore(54 + Math.min(recentDates.size, 7) * 5) : null,
+  ];
+
+  const parts: StabilityPart[] = [
+    createStabilityPart("basic", "気分・不安感", basicValues, daily ? "気分、不安感、いらだち、疲労度から見ています。" : "今日の記録があると見えやすくなります。"),
+    createStabilityPart("sleep", "睡眠", sleepValues, daily ? "睡眠時間と睡眠の質から見ています。" : "睡眠の記録が増えると見えやすくなります。"),
+    createStabilityPart("lifestyle", "生活行動", lifestyleValues, daily ? "食事、外出、運動の記録を参考にしています。" : "生活行動の記録があると参考になります。"),
+    createStabilityPart("wave", "状態の波", waveValues, sudden.length ? "突発ログの回数、強さ、タグ、身体のサインから見ています。" : "今日の突発ログは多くありません。"),
+    createStabilityPart("thought", "思考メモ", thoughtValues, thoughts.length ? "思考メモの件数、感情の強さ、タグから見ています。" : "思考メモがあると考え方の傾向も見えます。"),
+    createStabilityPart("selfcare", "セルフケア", careValues, care.length ? "セルフケア実行と実行後の感じ方を反映しています。" : "実行ログがあると整いやすさを見やすくなります。"),
+    createStabilityPart("ifthen", "If-Then", ifThenValues, ifThen.length ? "整いやすさ、実行しやすさ、習慣化候補を反映しています。" : "If-Then実行ログがあると反映されます。"),
+    createStabilityPart("recording", "記録状況", recordingValues, "今日と直近7日間の記録状況を少しだけ参考にしています。"),
+  ];
+  const validParts = parts.filter((part) => part.score !== null);
+  const score = validParts.length ? Math.round(validParts.reduce((sum, part) => sum + part.score!, 0) / validParts.length) : null;
+  const supportText = validParts.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]?.label || "記録";
+  const waveText = validParts.sort((a, b) => (a.score ?? 100) - (b.score ?? 100))[0]?.label || "記録";
+  const isReference = validParts.length < 4 || !daily;
+  const note = score === null
+    ? "記録が増えると、安定度の参考スコアが見えやすくなります。"
+    : isReference
+      ? "今日は記録が少ないため参考値です。入力済みの項目だけで見ています。"
+      : `${supportText}の記録が安定度を支えている可能性があります。`;
+
+  return { score, parts, isReference, note, supportText, waveText };
+}
+
+function summarizeStabilityPeriod(period: number, dailyRecords: DailyRecord[], suddenLogs: SuddenLog[], selfCareLogs: SelfCareLog[], thoughtNotes: ThoughtNote[], ifThenPlans: IfThenPlan[], ifThenLogs: IfThenLog[]) {
+  const dates = new Set<string>();
+  dailyRecords.filter((record) => daysAgo(record.date) < period).forEach((record) => dates.add(record.date));
+  suddenLogs.filter((log) => daysAgo(log.occurredAt.slice(0, 10)) < period).forEach((log) => dates.add(log.occurredAt.slice(0, 10)));
+  selfCareLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period).forEach((log) => dates.add(log.createdAt.slice(0, 10)));
+  thoughtNotes.filter((note) => daysAgo(note.date) < period).forEach((note) => dates.add(note.date));
+  ifThenLogs.filter((log) => daysAgo(log.createdAt.slice(0, 10)) < period).forEach((log) => dates.add(log.createdAt.slice(0, 10)));
+  const scores = [...dates].map((date) => calculateStabilityScore(date, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs));
+  const averageScore = nullableAverage(scores.map((item) => item.score));
+  const partScores = groupItems(scores.flatMap((item) => item.parts.filter((part) => part.score !== null)), (part) => part.label);
+  const partAverages = Array.from(partScores.entries()).map(([label, parts]) => ({
+    label,
+    average: nullableAverage(parts.map((part) => part.score)),
+  })).filter((item): item is { label: string; average: number } => item.average !== null);
+  const supportText = partAverages.length
+    ? [...partAverages].sort((a, b) => b.average - a.average)[0].label
+    : "記録";
+  const waveText = partAverages.length
+    ? [...partAverages].sort((a, b) => a.average - b.average)[0].label
+    : "記録";
+  return {
+    average: averageScore === null ? null : Math.round(averageScore),
+    supportText: partAverages.length ? `${supportText}が支えになっている可能性があります` : "記録が増えると見えやすくなります",
+    waveText: partAverages.length ? `${waveText}を見返す材料にできます` : "記録が増えると見えやすくなります",
+  };
+}
+
+function createStabilityPart(key: StabilityPart["key"], label: string, values: Array<number | null | undefined>, note: string): StabilityPart {
+  const score = nullableAverage(values.map((value) => isFiniteNumber(value) ? clampScore(value) : null));
+  return { key, label, score: score === null ? null : Math.round(score), note };
+}
+
+function scoreHighGood(value: number | null | undefined) {
+  return isFiniteNumber(value) ? value * 10 : null;
+}
+
+function scoreLowGood(value: number | null | undefined) {
+  return isFiniteNumber(value) ? (11 - value) * 10 : null;
+}
+
+function scoreSleepHours(value: number | null | undefined) {
+  if (!isFiniteNumber(value)) return null;
+  if (value >= 6 && value <= 8.5) return 86;
+  if (value >= 5 && value < 6) return 68;
+  if (value > 8.5 && value <= 10) return 72;
+  return 54;
+}
+
+function scoreSleepQuality(value: SleepQuality) {
+  if (value === "良い") return 88;
+  if (value === "普通") return 70;
+  return 54;
+}
+
+function scoreMeal(value: DailyRecord["meal"]) {
+  if (value === "しっかり食べた") return 82;
+  if (value === "普通") return 72;
+  if (value === "少ない") return 58;
+  return 46;
+}
+
+function scoreExercise(value: DailyRecord["exercise"]) {
+  if (value === "散歩" || value === "軽い運動") return 82;
+  if (value === "筋トレ" || value === "その他") return 74;
+  return 58;
+}
+
+function scoreSelfCareResult(value: SelfCareResult) {
+  if (value === "少し整った") return 84;
+  if (value === "変化は少なめ") return 64;
+  if (value === "今は合わなかった") return 48;
+  return 58;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, value));
 }
 
 function scoreBand(score: number) {
@@ -5560,12 +5786,18 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
   const insightLines = insights.length
     ? insights.slice(0, 6).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
     : "記録が少ないため、傾向は参考程度です。もう少し記録が増えると、状態の波が見えやすくなります。";
+  const todayStability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const stabilitySummary = summarizeStabilityPeriod(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
 
   return `以下は、過去${period}日間のセルフ記録をもとにした相談用メモです。診断や治療判断ではなく、相談時に状態を伝えるための参考情報として作成しています。
 
 期間内の気分平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.mood)), "/10")}
 期間内の不安感平均: ${formatAverageWithSuffix(formatAverage(daily.map((record) => record.anxiety)), "/10")}
 睡眠時間の平均: ${formatAverageWithSuffix(formatAverage(validSleepHours(daily)), "時間")}
+今日の安定度: ${todayStability.score === null ? "記録待ち" : `${todayStability.score}%`}
+期間平均の安定度: ${stabilitySummary.average === null ? "記録なし" : `${stabilitySummary.average}%`}
+安定度を支えていた要素: ${stabilitySummary.supportText}
+状態の波を見返す材料: ${stabilitySummary.waveText}
 状態の波が大きかった日: ${waveDays}
 多かった状態タグ: ${topTags}
 多かったきっかけ: ${topTriggers}

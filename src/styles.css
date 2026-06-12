@@ -407,25 +407,27 @@ h3 {
 
 .home-date {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, auto) auto;
   align-items: baseline;
   justify-content: center;
   gap: clamp(7px, 2.5vw, 14px);
   color: var(--color-muted);
   font-weight: 800;
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .home-date span {
   min-width: 0;
-  font-size: clamp(0.9rem, 3.8vw, 1.05rem);
+  font-size: clamp(0.9rem, 3.4vw, 1.05rem);
 }
 
 .home-date strong {
   color: var(--color-primary);
-  font-size: clamp(1.65rem, 9vw, 2.55rem);
+  font-size: clamp(1.55rem, 8vw, 2.4rem);
   line-height: 1;
+  min-width: 0;
 }
 
 .mood-hero {
@@ -682,6 +684,73 @@ h3 {
   font-size: 0.84rem;
   line-height: 1.65;
   text-align: center;
+}
+
+.stability-card {
+  display: grid;
+  gap: 12px;
+}
+
+.stability-breakdown {
+  display: grid;
+  gap: 10px;
+}
+
+.stability-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(80px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-primary-soft) 34%, var(--color-surface));
+}
+
+.stability-row strong,
+.stability-row span {
+  display: block;
+  min-width: 0;
+}
+
+.stability-row strong {
+  color: var(--color-heading);
+  font-size: 0.92rem;
+}
+
+.stability-row span {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.stability-row em {
+  color: var(--color-primary);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.stability-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 55%, white);
+}
+
+.stability-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 64%, #b8e8d9));
+}
+
+.tiny-note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
 }
 
 .quick-grid,
