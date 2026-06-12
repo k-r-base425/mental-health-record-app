@@ -6,6 +6,12 @@ type SleepQuality = "良い" | "普通" | "悪い";
 type DailyChoice = "晴れ" | "曇り" | "雨" | "雪" | "その他";
 type RiskLevel = "低" | "中" | "高";
 
+type SampleMeta = {
+  sample?: boolean;
+  source?: "sample";
+  sampleBatchId?: string;
+};
+
 type DailyRecord = {
   id: string;
   date: string;
@@ -26,7 +32,7 @@ type DailyRecord = {
   thoughtTags?: string[];
   createdAt: string;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type SuddenLog = {
   id: string;
@@ -44,7 +50,7 @@ type SuddenLog = {
   memo: string;
   createdAt: string;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type SelfCareCategory = "体を整える" | "環境を整える" | "思考を整理する" | "人とつながる" | "休む" | "習慣を見直す";
 type SelfCareResult = "少し整った" | "変化は少なめ" | "今は合わなかった" | "後で振り返る";
@@ -58,7 +64,7 @@ type SelfCarePlan = {
   memo: string;
   createdAt: string;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type SelfCareLog = {
   id: string;
@@ -68,7 +74,7 @@ type SelfCareLog = {
   result: SelfCareResult;
   memo: string;
   createdAt: string;
-};
+} & SampleMeta;
 
 type IfThenPlan = {
   id: string;
@@ -83,7 +89,7 @@ type IfThenPlan = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type IfThenPrefill = Partial<Pick<IfThenPlan, "title" | "ifText" | "thenText" | "category" | "relatedStateTags" | "relatedThoughtTags" | "memo">>;
 
@@ -98,7 +104,7 @@ type IfThenLog = {
   legacyResult?: SelfCareResult;
   memo: string;
   createdAt: string;
-};
+} & SampleMeta;
 
 type ConsultationTarget = "doctor" | "counselor" | "family" | "partner" | "friend" | "ai" | "other";
 type ConsultationStatus = "draft" | "planned" | "done" | "pending";
@@ -116,7 +122,7 @@ type ConsultationNote = {
   includeInReport: boolean;
   createdAt: string;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type ThoughtNote = {
   id: string;
@@ -133,7 +139,7 @@ type ThoughtNote = {
   sourceLogId?: string;
   createdAt: string;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type AutoLockMinutes = 1 | 5 | 15 | 30 | 0;
 
@@ -164,7 +170,7 @@ type HabitSettings = {
   weeklyGoalType: WeeklyGoalType;
   customWeeklyGoal: number;
   updatedAt: string;
-};
+} & SampleMeta;
 
 type ReminderDismissal = {
   date: string;
@@ -319,6 +325,270 @@ const ifThenExamples = [
   { ifText: "自分を責める考えが出たら", thenText: "友人に言うなら何と言うかを1行だけ書く" },
   { ifText: "寝る前に考えが止まらなかったら", thenText: "今日は結論を出さないとメモして、画面を閉じる" },
 ];
+
+const sampleBatchId = "self-compass-sample-month-v1";
+
+type SampleDataBundle = {
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  thoughtNotes: ThoughtNote[];
+  selfCarePlans: SelfCarePlan[];
+  selfCareLogs: SelfCareLog[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
+  consultationNotes: ConsultationNote[];
+  habitSettings: HabitSettings;
+};
+
+function withSample<T extends object>(item: T): T & Required<Pick<SampleMeta, "sample" | "source" | "sampleBatchId">> {
+  return { ...item, sample: true, source: "sample", sampleBatchId };
+}
+
+function sampleMetaFrom(item?: SampleMeta): SampleMeta {
+  return item?.sample || item?.source === "sample" || item?.sampleBatchId ? {
+    sample: Boolean(item.sample || item.source === "sample"),
+    source: "sample",
+    sampleBatchId: item.sampleBatchId || sampleBatchId,
+  } : {};
+}
+
+function isSampleItem(item: unknown): item is SampleMeta {
+  return Boolean(item && typeof item === "object" && ((item as SampleMeta).sample || (item as SampleMeta).source === "sample" || (item as SampleMeta).sampleBatchId === sampleBatchId));
+}
+
+function removeSampleItems<T>(items: T[]) {
+  return items.filter((item) => !isSampleItem(item));
+}
+
+function sampleIso(date: string, hour: number, minute = 0) {
+  return new Date(`${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`).toISOString();
+}
+
+function buildSampleMonthDates() {
+  const base = new Date();
+  const year = base.getFullYear();
+  const month = base.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: daysInMonth }, (_, index) => localDateString(new Date(year, month, index + 1)));
+}
+
+function sampleDayNumber(date: string) {
+  return Number(date.slice(8, 10));
+}
+
+function generateMonthlySampleData(): SampleDataBundle {
+  const dates = buildSampleMonthDates();
+  const createdAt = nowIso();
+  const skippedDailyDays = new Set([6, 14, 23, 29].filter((day) => day <= dates.length));
+  const weatherPattern: DailyChoice[] = ["晴れ", "曇り", "晴れ", "雨", "曇り", "晴れ", "晴れ", "雨", "曇り", "晴れ"];
+
+  const dailyRecords = dates
+    .filter((date) => !skippedDailyDays.has(sampleDayNumber(date)))
+    .map((date): DailyRecord => {
+      const day = sampleDayNumber(date);
+      const weather = weatherPattern[day % weatherPattern.length];
+      const shortSleep = day % 9 === 3 || day % 11 === 0;
+      const walked = day % 3 === 0 || day % 7 === 1;
+      const rainyWave = weather === "雨" || (weather === "曇り" && day % 4 === 0);
+      const mood = Math.max(4, Math.min(9, 7 + (walked ? 1 : 0) - (rainyWave ? 1 : 0) - (shortSleep ? 1 : 0) + (day % 10 === 2 ? 1 : 0)));
+      const anxiety = Math.max(2, Math.min(8, 4 + (rainyWave ? 2 : 0) + (shortSleep ? 1 : 0) - (walked ? 1 : 0)));
+      const fatigue = Math.max(3, Math.min(9, 5 + (shortSleep ? 2 : 0) + (day % 6 === 0 ? 1 : 0) - (walked ? 1 : 0)));
+      const thoughtTags = day % 8 === 0 ? ["先のことを考えすぎる"] : day % 13 === 0 ? ["比べすぎる"] : [];
+
+      return withSample<DailyRecord>({
+        id: `sample-daily-${date}`,
+        date,
+        mood,
+        anxiety,
+        irritability: Math.max(2, Math.min(8, anxiety - 1 + (day % 5 === 0 ? 1 : 0))),
+        fatigue,
+        sleepHours: shortSleep ? 4.8 : day % 5 === 0 ? 6 : 7.2,
+        sleepQuality: shortSleep ? "悪い" : day % 4 === 0 ? "普通" : "良い",
+        weather,
+        meal: day % 10 === 0 ? "少ない" : day % 3 === 0 ? "しっかり食べた" : "普通",
+        exercise: walked ? "散歩" : day % 5 === 0 ? "軽い運動" : "なし",
+        wentOut: walked || day % 2 === 0 ? "あり" : "なし",
+        socialContact: day % 7 === 0 ? "少ない" : day % 4 === 0 ? "多い" : "普通",
+        medicine: "該当なし",
+        events: rainyWave ? "天気や予定の影響を少し感じた日" : walked ? "短い散歩を入れられた日" : "いつものペースで過ごした日",
+        memo: shortSleep ? "睡眠が短めだったので、夕方は予定を軽くした。" : "架空サンプルの記録です。短く状態を残しています。",
+        thoughtTags,
+        createdAt: sampleIso(date, 21, 0),
+        updatedAt: sampleIso(date, 21, 8),
+      });
+    });
+
+  const suddenSeeds = [
+    { day: 2, tags: ["考えすぎ", "そわそわ"], trigger: "LINE・メッセージ", symptom: "動悸", place: "自宅", thought: "返信の意味を考え続けていた", action: "深呼吸した", after: "少し落ち着いた", intensity: 6 },
+    { day: 5, tags: ["身体の重さ"], trigger: "睡眠不足", symptom: "だるさ", place: "自宅", thought: "今日は少し重たい感じがした", action: "寝た", after: "少し落ち着いた", intensity: 5 },
+    { day: 8, tags: ["不安感"], trigger: "天気", symptom: "胸の圧迫感", place: "外", thought: "雨の日は予定が重く感じた", action: "散歩した", after: "少し落ち着いた", intensity: 6 },
+    { day: 11, tags: ["焦り"], trigger: "仕事", symptom: "頭痛", place: "職場", thought: "やることが重なっていると感じた", action: "何もしなかった", after: "変わらない", intensity: 7 },
+    { day: 13, tags: ["ひとり感"], trigger: "SNS", symptom: "だるさ", place: "自宅", thought: "人と比べて少し焦った", action: "スマホから離れた", after: "少し落ち着いた", intensity: 5 },
+    { day: 17, tags: ["いらだち"], trigger: "家族", symptom: "胸の圧迫感", place: "自宅", thought: "言葉の受け取り方が気になった", action: "入浴した", after: "かなり落ち着いた", intensity: 6 },
+    { day: 20, tags: ["そわそわ"], trigger: "将来への不安", symptom: "震え", place: "自宅", thought: "先の予定を考えすぎていた", action: "紙に書き出した", after: "少し落ち着いた", intensity: 6 },
+    { day: 22, tags: ["涙が出る"], trigger: "友人", symptom: "涙", place: "外", thought: "会話のあとで少し疲れを感じた", action: "誰かに連絡した", after: "少し落ち着いた", intensity: 5 },
+    { day: 25, tags: ["動きにくさ"], trigger: "体調不良", symptom: "だるさ", place: "自宅", thought: "今日はゆっくりめでよさそう", action: "寝た", after: "少し落ち着いた", intensity: 4 },
+    { day: 28, tags: ["考えすぎ"], trigger: "理由が分からない", symptom: "頭痛", place: "自宅", thought: "寝る前に考えが回っていた", action: "深呼吸した", after: "変わらない", intensity: 6 },
+  ];
+  const suddenLogs = suddenSeeds
+    .filter((seed) => seed.day <= dates.length)
+    .map((seed): SuddenLog => {
+      const date = dates[seed.day - 1];
+      return withSample<SuddenLog>({
+        id: `sample-sudden-${date}-${seed.day}`,
+        occurredAt: sampleIso(date, seed.day % 2 ? 21 : 18, 20),
+        stateTags: seed.tags,
+        intensity: seed.intensity,
+        triggers: [seed.trigger],
+        place: seed.place,
+        symptoms: [seed.symptom],
+        thoughts: seed.thought,
+        actions: [seed.action],
+        afterChange: seed.after as SuddenLog["afterChange"],
+        memo: "架空サンプルです。短い記録として残しています。",
+        createdAt: sampleIso(date, seed.day % 2 ? 21 : 18, 24),
+        updatedAt: sampleIso(date, seed.day % 2 ? 21 : 18, 24),
+      });
+    });
+
+  const thoughtSeeds = [
+    ["LINEの返信が遅い場面", "返信が遅い理由を考えすぎていた", "不安", 6, ["先のことを考えすぎる", "相手の気持ちを読みすぎる"], "確認できていることと想像を分けると少し見やすいかもしれない。"],
+    ["予定が多い朝", "全部やらなきゃと思った", "焦り", 7, ["すべきが強くなる", "完璧にやろうとする"], "今日やることを1つ減らしてもよさそう。"],
+    ["小さな失敗のあと", "ひとつ失敗すると全部だめに感じた", "落ち込み", 6, ["一度のことを全部に広げる"], "一部の出来事として置いておけるかもしれない。"],
+    ["SNSを見たあと", "人と比べて焦った", "焦り", 5, ["比べすぎる"], "自分のペースを確認する時間にする。"],
+    ["寝る前", "明日のことを考え続けた", "そわそわ", 6, ["先のことを考えすぎる"], "今日は結論を出さないとメモして閉じる。"],
+    ["作業前", "うまくできないかもしれないと思った", "緊張", 5, ["悪い方に決めつける"], "まずは5分だけ始める形にする。"],
+    ["人と話したあと", "変なことを言ったかもしれないと思った", "気がかり", 6, ["相手の気持ちを読みすぎる"], "相手の反応には別の理由もありそう。"],
+    ["休む前", "休んでいる自分を責めていた", "重さ", 5, ["自分を責める"], "休むことも翌日の準備になるかもしれない。"],
+    ["雨の日の午後", "今日は何も進まないと感じた", "だるさ", 5, ["よい面を見落とす"], "小さくできたことも一緒に見る。"],
+  ] as const;
+  const thoughtDays = [2, 4, 7, 10, 13, 18, 21, 24, 27];
+  const thoughtNotes = thoughtSeeds.map((seed, index): ThoughtNote => {
+    const date = dates[Math.min(thoughtDays[index] - 1, dates.length - 1)];
+    return withSample<ThoughtNote>({
+      id: `sample-thought-${index + 1}`,
+      date,
+      situation: seed[0],
+      thought: seed[1],
+      emotion: seed[2],
+      intensity: seed[3],
+      thoughtTags: [...seed[4]],
+      alternativeView: seed[5],
+      selfCompassion: index % 2 === 0 ? "全部を一度に解決しなくても大丈夫。" : "今日は小さく整えるだけでいい。",
+      relatedAction: index % 3 === 0 ? "紙に書き出す" : "短くメモする",
+      memo: "架空サンプルの思考メモです。",
+      createdAt: sampleIso(date, 20, 10 + index),
+      updatedAt: sampleIso(date, 20, 20 + index),
+    });
+  });
+
+  const selfCarePlans = [
+    ["sample-care-light", "朝の光を浴びる", "体を整える", "カーテンを開けて少し光を感じる"],
+    ["sample-care-walk", "5分だけ散歩する", "体を整える", "近くを短く歩く"],
+    ["sample-care-water", "水を飲む", "体を整える", "ひと口から始める"],
+    ["sample-care-write", "紙に書き出す", "思考を整理する", "頭の中から一度外に置く"],
+    ["sample-care-phone", "スマホから少し離れる", "環境を整える", "数分だけ画面を閉じる"],
+    ["sample-care-room", "部屋を1分だけ整える", "環境を整える", "目の前のものをひとつ戻す"],
+    ["sample-care-rest", "早めに休む", "休む", "予定を少し軽くする"],
+  ].map(([id, title, category, memo], index): SelfCarePlan => withSample<SelfCarePlan>({
+    id,
+    title,
+    category: category as SelfCareCategory,
+    memo,
+    createdAt: sampleIso(dates[0], 9, index),
+    updatedAt: sampleIso(dates[0], 9, index),
+  }));
+
+  const selfCareLogs = dates
+    .filter((_, index) => index % 2 === 0 || index % 7 === 0)
+    .slice(0, 22)
+    .map((date, index): SelfCareLog => {
+      const plan = selfCarePlans[index % selfCarePlans.length];
+      const result: SelfCareResult = index % 6 === 0 ? "変化は少なめ" : index % 9 === 0 ? "後で振り返る" : "少し整った";
+      return withSample<SelfCareLog>({
+        id: `sample-care-log-${date}-${index}`,
+        planId: plan.id,
+        title: plan.title,
+        category: plan.category,
+        result,
+        memo: result === "少し整った" ? "短い時間でも少し整った感じがあった。" : "その日の状態に合わせて試した。",
+        createdAt: sampleIso(date, index % 2 ? 19 : 8, 10),
+      });
+    });
+
+  const ifThenPlans = [
+    ["sample-ifthen-water", "朝の重さに水と光", "朝起きて体が重かったら", "カーテンを開けてコップ1杯の水を飲む", "体を整える", ["身体の重さ"], [], "すぐできそう"],
+    ["sample-ifthen-line", "LINE後の整理", "LINEの後に考えすぎていたら", "事実と想像を1つずつ分けてメモする", "思考を整理する", ["考えすぎ"], ["相手の気持ちを読みすぎる"], "少し準備が必要"],
+    ["sample-ifthen-cloudy", "曇りの日の光", "曇りの日に気分が沈みやすかったら", "外の光を3分だけ浴びる", "体を整える", ["身体の重さ"], [], "すぐできそう"],
+    ["sample-ifthen-blame", "責める考えを置く", "自分を責める考えが出たら", "友人に言うなら何と言うかを1行だけ書く", "思考を整理する", ["考えすぎ"], ["自分を責める"], "少し準備が必要"],
+    ["sample-ifthen-night", "寝る前に結論を出さない", "寝る前に考えが止まらなかったら", "今日は結論を出さないとメモして、画面を閉じる", "休む", ["そわそわ"], ["先のことを考えすぎる"], "今は小さくした方がよさそう"],
+  ].map(([id, title, ifText, thenText, category, stateTags, thoughtTags, ease], index): IfThenPlan => withSample<IfThenPlan>({
+    id: id as string,
+    title: title as string,
+    ifText: ifText as string,
+    thenText: thenText as string,
+    category: category as IfThenCategory,
+    relatedStateTags: stateTags as string[],
+    relatedThoughtTags: thoughtTags as string[],
+    ease: ease as IfThenEase,
+    memo: "架空サンプルのIf-Thenプランです。",
+    isActive: true,
+    createdAt: sampleIso(dates[0], 10, index),
+    updatedAt: sampleIso(dates[0], 10, index),
+  }));
+
+  const ifThenLogPlanIndexes = [0, 0, 0, 1, 1, 2, 2, 2, 3, 4, 0, 1, 3, 2, 4, 0, 1];
+  const ifThenLogDays = [2, 4, 8, 9, 12, 13, 16, 20, 21, 22, 24, 25, 27, 28, 29, 30, 18].filter((day) => day <= dates.length);
+  const ifThenLogs = ifThenLogDays.map((day, index): IfThenLog => {
+    const plan = ifThenPlans[ifThenLogPlanIndexes[index] % ifThenPlans.length];
+    const high = plan.id === "sample-ifthen-water" || plan.id === "sample-ifthen-cloudy";
+    const fitScore = high ? (index % 3 === 0 ? 8 : 7) : plan.id === "sample-ifthen-night" ? 5 : index % 4 === 0 ? 6 : 7;
+    const easeScore = high ? (index % 4 === 0 ? 9 : 8) : plan.id === "sample-ifthen-night" ? 4 : 6;
+    return withSample<IfThenLog>({
+      id: `sample-ifthen-log-${day}-${index}`,
+      planId: plan.id,
+      planTitle: plan.title,
+      ifText: plan.ifText,
+      thenText: plan.thenText,
+      fitScore,
+      easeScore,
+      memo: fitScore >= 7 ? "短く試せて、少し整った感じがあった。" : "今日は少し小さくした方がよさそうだった。",
+      createdAt: sampleIso(dates[day - 1], 20, index),
+    });
+  });
+
+  const consultationNotes = [
+    ["sample-consult-sleep", "睡眠が短い日の翌日について", "doctor", "planned", "睡眠が短い翌日に不安感が高めに記録されることについて相談したい。"],
+    ["sample-consult-weather", "曇りの日の状態の波", "counselor", "draft", "曇りの日に気分が沈みやすい傾向について話したい。"],
+    ["sample-consult-ifthen", "続けやすかった小さな行動", "ai", "done", "If-Thenプランで続けやすかった行動を共有したい。"],
+    ["sample-consult-night", "寝る前の考えすぎ", "doctor", "pending", "寝る前に考えが続く日の整理について相談したい。"],
+  ].map(([id, title, target, status, mainTopic], index): ConsultationNote => withSample<ConsultationNote>({
+    id,
+    title,
+    target: target as ConsultationTarget,
+    status: status as ConsultationStatus,
+    mainTopic,
+    recentConcern: index % 2 === 0 ? "睡眠や天気との関係を記録で見ています。" : "考えが続く場面を思考メモに残しています。",
+    waveMemo: "記録上の傾向として、状態の波がある日を共有したいです。",
+    lifestyleMemo: "散歩や光を浴びる行動は続けやすい可能性があります。",
+    dontForgetMemo: "原因を断定せず、相談材料として見てもらいたいです。",
+    includeInReport: true,
+    createdAt: sampleIso(dates[Math.min(index * 6 + 1, dates.length - 1)], 12, 0),
+    updatedAt: sampleIso(dates[Math.min(index * 6 + 2, dates.length - 1)], 12, 15),
+  }));
+
+  const habitSettings = withSample<HabitSettings>({
+    enabled: true,
+    reminderTimeType: "夜",
+    customReminderTime: "20:00",
+    reminderMessage: "今日の状態を少しだけ記録してみませんか？",
+    weeklyGoalType: "週に3回",
+    customWeeklyGoal: 3,
+    updatedAt: createdAt,
+  });
+
+  return { dailyRecords, suddenLogs, thoughtNotes, selfCarePlans, selfCareLogs, ifThenPlans, ifThenLogs, consultationNotes, habitSettings };
+}
 
 const draftDefinitions = [
   { key: dailyDraftKey, label: "今日の記録" },
@@ -511,6 +781,16 @@ function App() {
   const [onboardingMode, setOnboardingMode] = useState<"initial" | "guide">("initial");
   const [activeFormDirty, setActiveFormDirty] = useState(false);
   const [flash, setFlash] = useState("");
+  const hasSampleData = [
+    ...dailyRecords,
+    ...suddenLogs,
+    ...selfCarePlans,
+    ...selfCareLogs,
+    ...ifThenPlans,
+    ...ifThenLogs,
+    ...consultationNotes,
+    ...thoughtNotes,
+  ].some(isSampleItem) || isSampleItem(habitSettings);
 
   useEffect(() => {
     if (!privacySettings.isLockEnabled || privacySettings.autoLockMinutes === 0 || isLocked) return;
@@ -782,6 +1062,80 @@ function App() {
     setPendingDelete(null);
     setDetailItem(null);
     setFlash("保存されている記録を削除しました");
+    setScreen("data");
+  };
+
+  const addSampleData = () => {
+    const confirmed = window.confirm(hasSampleData
+      ? "既存のサンプルデータを入れ替えて、1ヶ月分の架空サンプルデータを追加します。手入力した記録は削除されません。続行しますか？"
+      : "1ヶ月分の架空サンプルデータを追加します。現在の記録は削除されませんが、データが増えます。続行しますか？");
+    if (!confirmed) return;
+
+    const sample = generateMonthlySampleData();
+    const nextDaily = [...removeSampleItems(dailyRecords), ...sample.dailyRecords].sort((a, b) => b.date.localeCompare(a.date));
+    const nextSudden = [...removeSampleItems(suddenLogs), ...sample.suddenLogs].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+    const nextThought = [...removeSampleItems(thoughtNotes), ...sample.thoughtNotes].sort((a, b) => b.date.localeCompare(a.date));
+    const nextSelfCarePlans = [...removeSampleItems(selfCarePlans), ...sample.selfCarePlans].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const nextSelfCareLogs = [...removeSampleItems(selfCareLogs), ...sample.selfCareLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const nextIfThenPlans = [...removeSampleItems(ifThenPlans), ...sample.ifThenPlans].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const nextIfThenLogs = [...removeSampleItems(ifThenLogs), ...sample.ifThenLogs].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const nextConsultation = [...removeSampleItems(consultationNotes), ...sample.consultationNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const nextHabit = isSampleItem(habitSettings) || isDefaultHabitSettings(habitSettings) ? sample.habitSettings : habitSettings;
+
+    setDailyRecords(nextDaily);
+    setSuddenLogs(nextSudden);
+    setThoughtNotes(nextThought);
+    setSelfCarePlans(nextSelfCarePlans);
+    setSelfCareLogs(nextSelfCareLogs);
+    setIfThenPlans(nextIfThenPlans);
+    setIfThenLogs(nextIfThenLogs);
+    setConsultationNotes(nextConsultation);
+    setHabitSettings(nextHabit);
+    localStorage.setItem(dailyStorageKey, JSON.stringify(nextDaily));
+    localStorage.setItem(suddenStorageKey, JSON.stringify(nextSudden));
+    localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(nextThought));
+    localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(nextSelfCarePlans));
+    localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(nextSelfCareLogs));
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(nextIfThenPlans));
+    localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(nextIfThenLogs));
+    localStorage.setItem(consultationNotesStorageKey, JSON.stringify(nextConsultation));
+    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(nextHabit));
+    setFlash("1ヶ月分のサンプルデータを追加しました");
+    setScreen("data");
+  };
+
+  const deleteSampleData = () => {
+    if (!window.confirm("追加したサンプルデータだけを削除します。手入力した記録は削除されません。続行しますか？")) return;
+    const nextDaily = removeSampleItems(dailyRecords);
+    const nextSudden = removeSampleItems(suddenLogs);
+    const nextThought = removeSampleItems(thoughtNotes);
+    const nextSelfCarePlans = removeSampleItems(selfCarePlans);
+    const nextSelfCareLogs = removeSampleItems(selfCareLogs);
+    const nextIfThenPlans = removeSampleItems(ifThenPlans);
+    const nextIfThenLogs = removeSampleItems(ifThenLogs);
+    const nextConsultation = removeSampleItems(consultationNotes);
+    const nextHabit = isSampleItem(habitSettings) ? defaultHabitSettings() : habitSettings;
+
+    setDailyRecords(nextDaily);
+    setSuddenLogs(nextSudden);
+    setThoughtNotes(nextThought);
+    setSelfCarePlans(nextSelfCarePlans);
+    setSelfCareLogs(nextSelfCareLogs);
+    setIfThenPlans(nextIfThenPlans);
+    setIfThenLogs(nextIfThenLogs);
+    setConsultationNotes(nextConsultation);
+    setHabitSettings(nextHabit);
+    localStorage.setItem(dailyStorageKey, JSON.stringify(nextDaily));
+    localStorage.setItem(suddenStorageKey, JSON.stringify(nextSudden));
+    localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(nextThought));
+    localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(nextSelfCarePlans));
+    localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(nextSelfCareLogs));
+    localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(nextIfThenPlans));
+    localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(nextIfThenLogs));
+    localStorage.setItem(consultationNotesStorageKey, JSON.stringify(nextConsultation));
+    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(nextHabit));
+    setDetailItem(null);
+    setFlash("サンプルデータを削除しました");
     setScreen("data");
   };
 
@@ -1175,6 +1529,9 @@ function App() {
             flash={flash}
             onImportRequest={setPendingImport}
             onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
+            onAddSampleData={addSampleData}
+            onDeleteSampleData={deleteSampleData}
+            hasSampleData={hasSampleData}
           />
         )}
       </main>
@@ -2287,6 +2644,9 @@ function DataManagement({
   flash,
   onImportRequest,
   onDeleteAllRequest,
+  onAddSampleData,
+  onDeleteSampleData,
+  hasSampleData,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -2303,6 +2663,9 @@ function DataManagement({
   flash: string;
   onImportRequest: (backup: BackupData) => void;
   onDeleteAllRequest: () => void;
+  onAddSampleData: () => void;
+  onDeleteSampleData: () => void;
+  hasSampleData: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState("");
@@ -2462,6 +2825,20 @@ function DataManagement({
         <p className="soft-text">このアプリの記録は、現在お使いのブラウザ内に保存されます。ブラウザのデータを消したり、端末を変更した場合、記録が失われることがあります。大切な記録は定期的にバックアップしてください。</p>
         <p className="soft-text">共有URLを開いた人同士で記録が共有されるわけではありません。ただし、同じ端末・同じブラウザを使う人には見える可能性があります。必要に応じて、プライバシー設定を利用してください。</p>
         <p className="soft-text">このアプリは診断や治療を行うものではありません。記録は医師や専門家に相談するための参考情報として利用してください。</p>
+      </section>
+
+      <section className="section-block data-card sample-data-card">
+        <div>
+          <p className="eyebrow">開発・確認用</p>
+          <h2>サンプルデータ</h2>
+        </div>
+        <p className="soft-text">UIやカレンダー、ふり返り機能を確認するための架空データを追加できます。実際の記録ではありません。</p>
+        <p className="soft-text">現在の記録に追加されます。必要な場合は先にバックアップしてください。</p>
+        {hasSampleData && <p className="sample-note">サンプルデータがあります。追加し直す場合は、既存のサンプルだけ入れ替えます。</p>}
+        <div className="data-actions">
+          <button className="secondary-btn no-margin" onClick={onAddSampleData}>1ヶ月分のサンプルデータを追加</button>
+          <button className="secondary-btn no-margin" onClick={onDeleteSampleData} disabled={!hasSampleData}>サンプルデータを削除</button>
+        </div>
       </section>
 
       <section className="section-block data-card">
@@ -5949,7 +6326,17 @@ function normalizeHabitSettings(settings?: Partial<HabitSettings>): HabitSetting
     weeklyGoalType: weeklyGoalTypes.includes(settings?.weeklyGoalType as WeeklyGoalType) ? (settings?.weeklyGoalType as WeeklyGoalType) : defaults.weeklyGoalType,
     customWeeklyGoal: clampWeeklyGoal(settings?.customWeeklyGoal ?? defaults.customWeeklyGoal),
     updatedAt: settings?.updatedAt || nowIso(),
+    ...sampleMetaFrom(settings),
   };
+}
+
+function isDefaultHabitSettings(settings: HabitSettings) {
+  return !settings.enabled
+    && settings.reminderTimeType === "夜"
+    && settings.customReminderTime === "20:00"
+    && settings.reminderMessage === defaultReminderMessages[0]
+    && settings.weeklyGoalType === "できる日に記録する"
+    && settings.customWeeklyGoal === 1;
 }
 
 function normalizeReminderDismissal(item: Partial<ReminderDismissal>): ReminderDismissal | null {
@@ -6273,6 +6660,7 @@ function normalizeDailyRecord(record: Partial<DailyRecord>): DailyRecord {
     thoughtTags: normalizeThoughtTags(record.thoughtTags),
     createdAt: timestamp,
     updatedAt: record.updatedAt || timestamp,
+    ...sampleMetaFrom(record),
   };
 }
 
@@ -6295,6 +6683,7 @@ function normalizeSuddenLog(log: Partial<SuddenLog>): SuddenLog {
     memo: log.memo || "",
     createdAt: timestamp,
     updatedAt: log.updatedAt || timestamp,
+    ...sampleMetaFrom(log),
   };
 }
 
@@ -6307,6 +6696,7 @@ function normalizeSelfCarePlan(plan: Partial<SelfCarePlan>): SelfCarePlan {
     memo: plan.memo || "",
     createdAt: timestamp,
     updatedAt: plan.updatedAt || timestamp,
+    ...sampleMetaFrom(plan),
   };
 }
 
@@ -6319,6 +6709,7 @@ function normalizeSelfCareLog(log: Partial<SelfCareLog>): SelfCareLog {
     result: normalizeSelfCareResult(log.result),
     memo: log.memo || "",
     createdAt: log.createdAt || nowIso(),
+    ...sampleMetaFrom(log),
   };
 }
 
@@ -6337,6 +6728,7 @@ function normalizeIfThenPlan(plan: Partial<IfThenPlan>): IfThenPlan {
     isActive: plan.isActive ?? true,
     createdAt: timestamp,
     updatedAt: plan.updatedAt || timestamp,
+    ...sampleMetaFrom(plan),
   };
 }
 
@@ -6353,6 +6745,7 @@ function normalizeIfThenLog(log: Partial<IfThenLog> & { result?: SelfCareResult 
     legacyResult: legacyResult ? normalizeSelfCareResult(legacyResult) : undefined,
     memo: log.memo || "",
     createdAt: log.createdAt || nowIso(),
+    ...sampleMetaFrom(log),
   };
 }
 
@@ -6371,6 +6764,7 @@ function normalizeConsultationNote(note: Partial<ConsultationNote>): Consultatio
     includeInReport: note.includeInReport ?? true,
     createdAt: timestamp,
     updatedAt: note.updatedAt || timestamp,
+    ...sampleMetaFrom(note),
   };
 }
 
@@ -6391,6 +6785,7 @@ function normalizeThoughtNote(note: Partial<ThoughtNote>): ThoughtNote {
     sourceLogId: note.sourceLogId,
     createdAt: timestamp,
     updatedAt: note.updatedAt || timestamp,
+    ...sampleMetaFrom(note),
   };
 }
 
