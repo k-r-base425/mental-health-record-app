@@ -212,7 +212,10 @@ type StabilityScore = {
   waveText: string;
 };
 
-type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen";
+type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen" | "metricDetail";
+type MetricType = "sleep" | "anxiety" | "activity";
+type TrendRange = "month" | "week" | "day";
+type TrendPoint = { label: string; value: number | null; date: string; isActive?: boolean; showLabel?: boolean };
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "thought"; id: string } | { kind: "ifthen"; id: string } | { kind: "all" };
@@ -775,6 +778,7 @@ function App() {
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [pendingImport, setPendingImport] = useState<BackupData | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<MetricType>("sleep");
   const [loggingPlan, setLoggingPlan] = useState<SelfCarePlan | null>(null);
   const [loggingIfThen, setLoggingIfThen] = useState<IfThenPlan | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(onboardingCompletedStorageKey) !== "true");
@@ -1284,6 +1288,12 @@ function App() {
     setScreen("display");
   };
 
+  const openMetricDetail = (metric: MetricType) => {
+    setFlash("");
+    setSelectedMetric(metric);
+    setScreen("metricDetail");
+  };
+
   const closeOnboarding = (markCompleted: boolean) => {
     if (markCompleted) {
       localStorage.setItem(onboardingCompletedStorageKey, "true");
@@ -1335,7 +1345,22 @@ function App() {
             onIfThen={openIfThen}
             onSelfCare={() => moveToScreen("selfcare")}
             onHabit={openHabit}
+            onMetricDetail={openMetricDetail}
             onDismissReminder={dismissReminderToday}
+          />
+        )}
+        {screen === "metricDetail" && (
+          <MetricDetailScreen
+            metricType={selectedMetric}
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            selfCareLogs={selfCareLogs}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
+            thoughtNotes={thoughtNotes}
+            privateDisplayMode={privacySettings.privateDisplayMode}
+            onDaily={openDaily}
+            onRecords={openRecords}
           />
         )}
         {screen === "recordHub" && (
@@ -1844,6 +1869,7 @@ function Home({
   onIfThen,
   onSelfCare,
   onHabit,
+  onMetricDetail,
   onDismissReminder,
 }: {
   dailyRecords: DailyRecord[];
@@ -1869,8 +1895,10 @@ function Home({
   onIfThen: () => void;
   onSelfCare: () => void;
   onHabit: () => void;
+  onMetricDetail: (metric: MetricType) => void;
   onDismissReminder: () => void;
 }) {
+  const [moodRange, setMoodRange] = useState<TrendRange>("week");
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const todayPlans = selfCarePlans.slice(0, 3);
   const todayIfThenPlans = recommendIfThenPlans(ifThenPlans, ifThenLogs, suddenLogs, thoughtNotes).slice(0, 3);
@@ -1886,7 +1914,7 @@ function Home({
   const anxietyValue = todayRecord?.anxiety ?? nullableAverage(dailyRecords.slice(-7).map((record) => record.anxiety));
   const todayCareCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
   const todayIfThenCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
-  const trendRecords = [...dailyRecords].sort((a, b) => a.date.localeCompare(b.date)).slice(-12);
+  const trendPoints = buildMoodTrendPoints(dailyRecords, moodRange);
 
   return (
     <section className="home-screen">
@@ -1969,29 +1997,48 @@ function Home({
       </section>
 
       <section className="home-summary-cards" aria-label="今日のサマリー">
-        <button className="summary-tile" onClick={onDaily} type="button">
+        <button className="summary-tile" onClick={() => onMetricDetail("sleep")} type="button" aria-label="睡眠詳細を見る">
           <span className="tile-icon">☾</span>
           <span>睡眠</span>
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatSleepHours(todayRecord.sleepHours) : "未入力"}</strong>
+          <em>詳細を見る ›</em>
         </button>
-        <button className="summary-tile" onClick={onDaily} type="button">
+        <button className="summary-tile" onClick={() => onMetricDetail("anxiety")} type="button" aria-label="不安感詳細を見る">
           <span className="tile-icon">◌</span>
           <span>不安感</span>
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : isFiniteNumber(anxietyValue) ? Math.round(anxietyValue * 10) : "-"}</strong>
+          <em>詳細を見る ›</em>
         </button>
-        <button className="summary-tile" onClick={onSelfCare} type="button">
+        <button className="summary-tile" onClick={() => onMetricDetail("activity")} type="button" aria-label="活動詳細を見る">
           <span className="tile-icon">{todayIfThenCount > 0 ? "↗" : "♧"}</span>
           <span>{todayIfThenCount > 0 ? "If-Then" : "活動"}</span>
           <strong>{privateDisplayMode && (todayCareCount > 0 || todayIfThenCount > 0) ? "記録あり" : todayIfThenCount > 0 ? `${todayIfThenCount}回` : `${todayCareCount}回`}</strong>
+          <em>詳細を見る ›</em>
         </button>
       </section>
 
       <section className="section-block home-chart-card">
         <div className="section-title-row">
           <h2>気分の推移</h2>
-          <div className="segmented-mini"><span className="active">日</span><span>週</span></div>
+          <div className="segmented-mini" role="group" aria-label="気分の推移の期間">
+            {[
+              ["month", "月"],
+              ["week", "週"],
+              ["day", "日"],
+            ].map(([range, label]) => (
+              <button
+                className={moodRange === range ? "active" : ""}
+                key={range}
+                onClick={() => setMoodRange(range as TrendRange)}
+                type="button"
+                aria-pressed={moodRange === range}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <HomeTrendBars records={trendRecords} privateDisplayMode={privateDisplayMode} />
+        <HomeTrendBars points={trendPoints} range={moodRange} privateDisplayMode={privateDisplayMode} />
         <button className="wide-cta" onClick={onDaily}>今日のふりかえりを記録する <span>›</span></button>
       </section>
 
@@ -2066,21 +2113,152 @@ function Home({
   );
 }
 
-function HomeTrendBars({ records, privateDisplayMode }: { records: DailyRecord[]; privateDisplayMode: boolean }) {
-  const points = records
-    .map((record) => ({ label: record.date.slice(5), value: record.mood }))
-    .filter((point): point is { label: string; value: number } => isFiniteNumber(point.value));
-  const fallback = Array.from({ length: 12 }, (_, index) => ({ label: `${index + 1}`, value: 3 + ((index * 3) % 5) }));
-  const displayPoints = points.length ? points : fallback;
+function HomeTrendBars({ points, range, privateDisplayMode }: { points: TrendPoint[]; range: TrendRange; privateDisplayMode: boolean }) {
+  const visiblePoints = points.filter((point) => point.showLabel || range !== "month");
+  const hasValue = points.some((point) => isFiniteNumber(point.value));
   return (
-    <div className="home-bars" aria-label="気分の推移">
-      {displayPoints.map((point, index) => (
-        <div className="home-bar-wrap" key={`${point.label}-${index}`}>
-          <div className={index === displayPoints.length - 1 ? "home-bar active" : "home-bar"} style={{ height: `${Math.max(20, (point.value / 10) * 100)}%` }} />
-          <small>{privateDisplayMode ? "" : point.label}</small>
+    <>
+      {!hasValue && (
+        <p className="empty-box">{range === "day" ? "今日はまだ記録がありません。" : "この期間の気分記録はまだありません。記録が増えると見えやすくなります。"}</p>
+      )}
+      <div className={`home-bars range-${range}`} aria-label="気分の推移">
+        {points.map((point, index) => (
+          <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.label}-${index}`}>
+            <div
+              className={point.isActive ? "home-bar active" : "home-bar"}
+              style={{ height: isFiniteNumber(point.value) ? `${Math.max(14, (point.value / 10) * 100)}%` : "10%" }}
+            />
+            <small>{privateDisplayMode ? "" : visiblePoints.includes(point) ? point.label : ""}</small>
+          </div>
+        ))}
+      </div>
+      <p className="tiny-note">{range === "day" ? "今日の気分スコアを表示しています。" : "未入力の日は0として扱わず、薄い表示にしています。参考表示です。"}</p>
+    </>
+  );
+}
+
+function MetricDetailScreen({
+  metricType,
+  dailyRecords,
+  suddenLogs,
+  selfCareLogs,
+  ifThenPlans,
+  ifThenLogs,
+  thoughtNotes,
+  privateDisplayMode,
+  onDaily,
+  onRecords,
+}: {
+  metricType: MetricType;
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  selfCareLogs: SelfCareLog[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
+  thoughtNotes: ThoughtNote[];
+  privateDisplayMode: boolean;
+  onDaily: () => void;
+  onRecords: () => void;
+}) {
+  const [range, setRange] = useState<TrendRange>("week");
+  const title = metricType === "sleep" ? "睡眠詳細" : metricType === "anxiety" ? "不安感詳細" : "活動詳細";
+  const todayRecord = dailyRecords.find((record) => record.date === today());
+  const weekRecords = dailyRecords.filter((record) => daysAgo(record.date) >= 0 && daysAgo(record.date) < 7);
+  const monthRecords = dailyRecords.filter((record) => record.date.startsWith(today().slice(0, 7)));
+  const points = buildMetricTrendPoints(metricType, range, dailyRecords, selfCareLogs, ifThenLogs);
+  const max = metricType === "activity" ? Math.max(4, ...points.map((point) => point.value || 0)) : 10;
+  const todayValue = formatMetricToday(metricType, todayRecord, selfCareLogs, ifThenLogs, privateDisplayMode);
+  const weekAverage = formatMetricAverage(metricType, weekRecords, selfCareLogs, ifThenLogs, 7, privateDisplayMode);
+  const monthAverage = formatMetricAverage(metricType, monthRecords, selfCareLogs, ifThenLogs, 31, privateDisplayMode);
+  const recordDays = new Set(monthRecords.map((record) => record.date)).size;
+  const content = getMetricDetailContent(metricType, dailyRecords, suddenLogs, selfCareLogs, ifThenPlans, ifThenLogs, thoughtNotes);
+
+  return (
+    <section>
+      <header className="page-head">
+        <div>
+          <p className="eyebrow">指標のふり返り</p>
+          <h1>{title}</h1>
         </div>
+      </header>
+      <p className="soft-text">{content.lead}</p>
+
+      <section className="section-block metric-detail-hero">
+        <div className="summary-list">
+          <Metric label="今日" value={todayValue} />
+          <Metric label="直近7日平均" value={weekAverage} />
+          <Metric label="今月平均" value={monthAverage} />
+          <Metric label="記録日数" value={privateDisplayMode ? "記録状況あり" : `${recordDays}日`} />
+        </div>
+        <p className="tiny-note">未入力の日は平均に含めていません。記録上の参考情報です。</p>
+      </section>
+
+      <section className="section-block home-chart-card">
+        <div className="section-title-row">
+          <h2>{content.trendTitle}</h2>
+          <RangeSegment value={range} onChange={setRange} />
+        </div>
+        <MetricTrendBars points={points} max={max} range={range} privateDisplayMode={privateDisplayMode} />
+      </section>
+
+      <section className="section-block data-card">
+        <h2>短いふり返り</h2>
+        <p className="soft-text">{content.comment}</p>
+        <div className="summary-list">
+          {content.metrics.map(([label, value]) => (
+            <Metric key={label} label={label} value={privateDisplayMode ? "記録あり" : value} />
+          ))}
+        </div>
+      </section>
+
+      <section className="section-block data-card">
+        <h2>関連する記録</h2>
+        <p className="soft-text">{content.relatedText}</p>
+        <div className="data-actions">
+          <button className="secondary-btn no-margin" onClick={onRecords} type="button">記録一覧を見る</button>
+          <button className="secondary-btn no-margin" onClick={onDaily} type="button">今日の記録を確認・編集</button>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function RangeSegment({ value, onChange }: { value: TrendRange; onChange: (value: TrendRange) => void }) {
+  return (
+    <div className="segmented-mini" role="group" aria-label="表示期間">
+      {[
+        ["month", "月"],
+        ["week", "週"],
+        ["day", "日"],
+      ].map(([range, label]) => (
+        <button
+          className={value === range ? "active" : ""}
+          key={range}
+          onClick={() => onChange(range as TrendRange)}
+          type="button"
+          aria-pressed={value === range}
+        >
+          {label}
+        </button>
       ))}
     </div>
+  );
+}
+
+function MetricTrendBars({ points, max, range, privateDisplayMode }: { points: TrendPoint[]; max: number; range: TrendRange; privateDisplayMode: boolean }) {
+  const hasValue = points.some((point) => isFiniteNumber(point.value));
+  return (
+    <>
+      {!hasValue && <p className="empty-box">この期間の記録はまだありません。記録が増えると見えやすくなります。</p>}
+      <div className={`home-bars metric-bars range-${range}`} aria-label="指標の推移">
+        {points.map((point, index) => (
+          <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.date}-${index}`}>
+            <div className={point.isActive ? "home-bar active" : "home-bar"} style={{ height: isFiniteNumber(point.value) ? `${Math.max(12, (point.value / max) * 100)}%` : "10%" }} />
+            <small>{privateDisplayMode ? "" : point.showLabel || range !== "month" ? point.label : ""}</small>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -5393,6 +5571,162 @@ function daysAgo(date: string) {
   return Math.floor((start - target) / 86400000);
 }
 
+function offsetDateString(baseDate: string, offset: number) {
+  const date = new Date(`${baseDate}T00:00:00`);
+  date.setDate(date.getDate() + offset);
+  return localDateString(date);
+}
+
+function recentDateList(days: number) {
+  return Array.from({ length: days }, (_, index) => offsetDateString(today(), index - days + 1));
+}
+
+function currentMonthDateList() {
+  const [year, month] = today().slice(0, 7).split("-").map(Number);
+  const days = new Date(year, month, 0).getDate();
+  return Array.from({ length: days }, (_, index) => localDateString(new Date(year, month - 1, index + 1)));
+}
+
+function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendPoint[] {
+  const byDate = new Map(records.map((record) => [record.date, record]));
+  const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
+  return dates.map((date) => {
+    const day = Number(date.slice(8, 10));
+    const value = byDate.get(date)?.mood ?? null;
+    return {
+      date,
+      label: range === "day" ? "今日" : date.slice(5).replace("-", "/"),
+      value,
+      isActive: date === today(),
+      showLabel: range !== "month" || day === 1 || day % 5 === 0 || date === today(),
+    };
+  });
+}
+
+function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]): TrendPoint[] {
+  const byDate = new Map(dailyRecords.map((record) => [record.date, record]));
+  const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
+  return dates.map((date) => {
+    const record = byDate.get(date);
+    const value = metric === "sleep"
+      ? record?.sleepHours ?? null
+      : metric === "anxiety"
+        ? record?.anxiety ?? null
+        : activityScoreForDate(date, dailyRecords, selfCareLogs, ifThenLogs);
+    const day = Number(date.slice(8, 10));
+    return {
+      date,
+      label: range === "day" ? "今日" : date.slice(5).replace("-", "/"),
+      value,
+      isActive: date === today(),
+      showLabel: range !== "month" || day === 1 || day % 5 === 0 || date === today(),
+    };
+  });
+}
+
+function activityScoreForDate(date: string, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]) {
+  const record = dailyRecords.find((item) => item.date === date);
+  const careCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === date).length;
+  const ifThenCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === date).length;
+  const dailyActivity = (record?.exercise && record.exercise !== "なし" ? 1 : 0) + (record?.wentOut === "あり" ? 1 : 0);
+  const total = dailyActivity + careCount + ifThenCount;
+  return total > 0 ? total : null;
+}
+
+function formatMetricToday(metric: MetricType, todayRecord: DailyRecord | undefined, selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[], privateDisplayMode: boolean) {
+  if (privateDisplayMode) return todayRecord ? "記録あり" : "記録なし";
+  if (metric === "sleep") return todayRecord ? `${formatSleepHours(todayRecord.sleepHours)} / ${todayRecord.sleepQuality}` : "記録なし";
+  if (metric === "anxiety") return todayRecord ? formatScore(todayRecord.anxiety) : "記録なし";
+  const activity = activityScoreForDate(today(), todayRecord ? [todayRecord] : [], selfCareLogs, ifThenLogs);
+  return isFiniteNumber(activity) ? `${activity}回` : "記録なし";
+}
+
+function formatMetricAverage(metric: MetricType, records: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[], days: number, privateDisplayMode: boolean) {
+  if (privateDisplayMode) return records.length ? "記録状況あり" : "記録なし";
+  if (metric === "sleep") return formatAverageWithSuffix(formatAverage(validSleepHours(records)), "h");
+  if (metric === "anxiety") return formatAverageWithSuffix(formatAverage(records.map((record) => record.anxiety)), "/10");
+  const dates = days === 7 ? recentDateList(7) : currentMonthDateList();
+  const values = dates.map((date) => activityScoreForDate(date, records, selfCareLogs, ifThenLogs)).filter(isFiniteNumber);
+  return values.length ? `${values.reduce((sum, value) => sum + value, 0)}回` : "記録なし";
+}
+
+function getMetricDetailContent(
+  metric: MetricType,
+  dailyRecords: DailyRecord[],
+  suddenLogs: SuddenLog[],
+  selfCareLogs: SelfCareLog[],
+  ifThenPlans: IfThenPlan[],
+  ifThenLogs: IfThenLog[],
+  thoughtNotes: ThoughtNote[],
+) {
+  const monthRecords = dailyRecords.filter((record) => record.date.startsWith(today().slice(0, 7)));
+  if (metric === "sleep") {
+    const shortDays = monthRecords.filter((record) => isFiniteNumber(record.sleepHours) && record.sleepHours < 5).length;
+    const longDays = monthRecords.filter((record) => isFiniteNumber(record.sleepHours) && record.sleepHours >= 7).length;
+    const quality = countBy(monthRecords, (record) => record.sleepQuality).map(([key, count]) => `${key} ${count}日`).join(" / ") || "記録なし";
+    const recentMemo = [...monthRecords].reverse().find((record) => record.memo.trim())?.memo || "最近の睡眠メモはまだありません。";
+    return {
+      lead: "記録上、睡眠時間の変化を確認できます。",
+      trendTitle: "睡眠時間の推移",
+      comment: "未入力の日は平均に含めていません。睡眠の質やメモも一緒に見ると、相談時の材料にできます。",
+      relatedText: "睡眠メモや生活記録を見返せます。",
+      metrics: [
+        ["睡眠の質", quality],
+        ["5時間未満", `${shortDays}日`],
+        ["7時間以上", `${longDays}日`],
+        ["最近のメモ", shortText(recentMemo, 34)],
+      ] as [string, string][],
+    };
+  }
+
+  if (metric === "anxiety") {
+    const highDays = monthRecords.filter((record) => isFiniteNumber(record.anxiety) && record.anxiety >= 7).length;
+    const topTags = countFlat(suddenLogs.filter((log) => log.occurredAt.startsWith(today().slice(0, 7))).flatMap((log) => log.stateTags)).slice(0, 3).map(([tag]) => tag).join(" / ") || "記録なし";
+    const topTriggers = countFlat(suddenLogs.filter((log) => log.occurredAt.startsWith(today().slice(0, 7))).flatMap((log) => log.triggers)).slice(0, 3).map(([tag]) => tag).join(" / ") || "記録なし";
+    const thoughtTags = countFlat(thoughtNotes.filter((note) => note.date.startsWith(today().slice(0, 7))).flatMap((note) => note.thoughtTags)).slice(0, 3).map(([tag]) => tag).join(" / ") || "記録なし";
+    const ifThenSummary = summarizeIfThenScores(ifThenPlans, ifThenLogs).filter((summary) => summary.averageFit !== null).sort((a, b) => (b.averageFit || 0) - (a.averageFit || 0))[0];
+    return {
+      lead: "記録上、不安感の変化と関連しそうなきっかけを確認できます。",
+      trendTitle: "不安感の推移",
+      comment: "原因を断定するものではありません。状態タグや思考タグと合わせて、相談時の材料として使えます。",
+      relatedText: "不安感が高めの日の記録、突発ログ、思考メモを見返せます。",
+      metrics: [
+        ["高めの日", `${highDays}日`],
+        ["状態タグ", topTags],
+        ["きっかけ", topTriggers],
+        ["思考タグ", thoughtTags],
+        ["If-Then", ifThenSummary ? `${ifThenSummary.title}（整いやすさ${ifThenSummary.averageFit?.toFixed(1)}/10）` : "記録なし"],
+      ] as [string, string][],
+    };
+  }
+
+  const monthDates = currentMonthDateList();
+  const activeDays = monthDates.filter((date) => activityScoreForDate(date, dailyRecords, selfCareLogs, ifThenLogs)).length;
+  const exerciseDays = monthRecords.filter((record) => record.exercise !== "なし").length;
+  const walkDays = monthRecords.filter((record) => record.exercise === "散歩").length;
+  const outsideDays = monthRecords.filter((record) => record.wentOut === "あり").length;
+  const monthCare = selfCareLogs.filter((log) => log.createdAt.startsWith(today().slice(0, 7))).length;
+  const monthIfThen = ifThenLogs.filter((log) => log.createdAt.startsWith(today().slice(0, 7))).length;
+  const activeStability = nullableAverage(monthDates
+    .filter((date) => activityScoreForDate(date, dailyRecords, selfCareLogs, ifThenLogs))
+    .map((date) => calculateStabilityScore(date, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs).score));
+  return {
+    lead: "記録上、外出や軽い運動、小さな行動があった日を確認できます。",
+    trendTitle: "活動の推移",
+    comment: "無理に増やすための指標ではなく、ふり返り用の参考情報です。",
+    relatedText: "運動・外出の記録や、セルフケア/If-Thenの実行ログを見返せます。",
+    metrics: [
+      ["活動があった日", `${activeDays}日`],
+      ["運動あり", `${exerciseDays}日`],
+      ["散歩", `${walkDays}日`],
+      ["外出あり", `${outsideDays}日`],
+      ["セルフケア", `${monthCare}回`],
+      ["If-Then", `${monthIfThen}回`],
+      ["活動日の安定度", activeStability === null ? "記録なし" : `${Math.round(activeStability)}%`],
+    ] as [string, string][],
+  };
+}
+
 function dateWithCurrentTimeIso(date: string) {
   const now = new Date();
   const hours = String(now.getHours()).padStart(2, "0");
@@ -5988,6 +6322,7 @@ function firstKey(items: [string, number][]) {
 }
 
 function navGroup(screen: Screen) {
+  if (screen === "metricDetail") return "home";
   if (screen === "daily" || screen === "sudden" || screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report" || screen === "calendar") return "review";
   if (screen === "selfcare" || screen === "ifthen" || screen === "thought" || screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
@@ -5995,6 +6330,7 @@ function navGroup(screen: Screen) {
 }
 
 function backTargetForScreen(screen: Screen): Screen | null {
+  if (screen === "metricDetail") return "home";
   if (screen === "daily" || screen === "sudden") return null;
   if (screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report" || screen === "calendar" || screen === "thought") return "review";

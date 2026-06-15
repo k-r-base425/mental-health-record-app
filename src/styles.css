@@ -541,6 +541,15 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.summary-tile em {
+  align-self: end;
+  color: var(--color-muted);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .section-title-row {
   display: flex;
   align-items: center;
@@ -561,13 +570,26 @@ h3 {
   color: var(--color-muted);
   font-size: 0.82rem;
   font-weight: 900;
+  position: relative;
+  z-index: 2;
 }
 
-.segmented-mini span {
+.segmented-mini span,
+.segmented-mini button {
   min-width: 42px;
   padding: 7px 10px;
   border-radius: var(--radius-pill);
   text-align: center;
+}
+
+.segmented-mini button {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .segmented-mini .active {
@@ -612,6 +634,11 @@ h3 {
   background: color-mix(in srgb, var(--color-primary) 46%, white);
 }
 
+.home-bar-wrap.empty .home-bar {
+  background: color-mix(in srgb, var(--color-border) 56%, transparent);
+  opacity: 0.55;
+}
+
 .home-bar.active {
   background: var(--color-primary);
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-primary) 14%, transparent);
@@ -621,6 +648,19 @@ h3 {
   color: var(--color-muted);
   font-size: 0.66rem;
   font-weight: 800;
+}
+
+.home-bars.range-month {
+  gap: 4px;
+  padding-inline: 4px;
+}
+
+.metric-bars {
+  height: 190px;
+}
+
+.metric-detail-hero {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary-soft) 42%, white), var(--color-surface) 74%);
 }
 
 .wide-cta {
