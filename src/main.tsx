@@ -215,7 +215,7 @@ type StabilityScore = {
 type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen" | "metricDetail";
 type MetricType = "sleep" | "anxiety" | "activity";
 type TrendRange = "month" | "week" | "day";
-type TrendPoint = { label: string; value: number | null; date: string; isActive?: boolean; showLabel?: boolean };
+type TrendPoint = { label: string; value: number | null; date: string; isActive?: boolean; showLabel?: boolean; count?: number };
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
 type PendingDelete = { kind: "daily"; id: string } | { kind: "sudden"; id: string } | { kind: "selfcare"; id: string } | { kind: "consultation"; id: string } | { kind: "thought"; id: string } | { kind: "ifthen"; id: string } | { kind: "all" };
@@ -1997,19 +1997,19 @@ function Home({
       </section>
 
       <section className="home-summary-cards" aria-label="今日のサマリー">
-        <button className="summary-tile" onClick={() => onMetricDetail("sleep")} type="button" aria-label="睡眠詳細を見る">
+        <button className="summary-tile metric-summary-sleep" onClick={() => onMetricDetail("sleep")} type="button" aria-label="睡眠詳細を見る">
           <span className="tile-icon">☾</span>
           <span>睡眠</span>
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatSleepHours(todayRecord.sleepHours) : "未入力"}</strong>
           <em>詳細を見る ›</em>
         </button>
-        <button className="summary-tile" onClick={() => onMetricDetail("anxiety")} type="button" aria-label="不安感詳細を見る">
+        <button className="summary-tile metric-summary-anxiety" onClick={() => onMetricDetail("anxiety")} type="button" aria-label="不安感詳細を見る">
           <span className="tile-icon">◌</span>
           <span>不安感</span>
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : isFiniteNumber(anxietyValue) ? Math.round(anxietyValue * 10) : "-"}</strong>
           <em>詳細を見る ›</em>
         </button>
-        <button className="summary-tile" onClick={() => onMetricDetail("activity")} type="button" aria-label="活動詳細を見る">
+        <button className="summary-tile metric-summary-activity" onClick={() => onMetricDetail("activity")} type="button" aria-label="活動詳細を見る">
           <span className="tile-icon">{todayIfThenCount > 0 ? "↗" : "♧"}</span>
           <span>{todayIfThenCount > 0 ? "If-Then" : "活動"}</span>
           <strong>{privateDisplayMode && (todayCareCount > 0 || todayIfThenCount > 0) ? "記録あり" : todayIfThenCount > 0 ? `${todayIfThenCount}回` : `${todayCareCount}回`}</strong>
@@ -2129,6 +2129,7 @@ function HomeTrendBars({ points, range, privateDisplayMode }: { points: TrendPoi
               style={{ height: isFiniteNumber(point.value) ? `${Math.max(14, (point.value / 10) * 100)}%` : "10%" }}
             />
             <small>{privateDisplayMode ? "" : visiblePoints.includes(point) ? point.label : ""}</small>
+            {range === "month" && !privateDisplayMode && <em>{point.count ? `${point.count}日` : "なし"}</em>}
           </div>
         ))}
       </div>
@@ -2174,7 +2175,7 @@ function MetricDetailScreen({
   const content = getMetricDetailContent(metricType, dailyRecords, suddenLogs, selfCareLogs, ifThenPlans, ifThenLogs, thoughtNotes);
 
   return (
-    <section>
+    <section className={`metric-detail metric-${metricType}`}>
       <header className="page-head">
         <div>
           <p className="eyebrow">指標のふり返り</p>
@@ -2198,7 +2199,7 @@ function MetricDetailScreen({
           <h2>{content.trendTitle}</h2>
           <RangeSegment value={range} onChange={setRange} />
         </div>
-        <MetricTrendBars points={points} max={max} range={range} privateDisplayMode={privateDisplayMode} />
+        <MetricTrendBars points={points} max={max} range={range} metricType={metricType} privateDisplayMode={privateDisplayMode} />
       </section>
 
       <section className="section-block data-card">
@@ -2245,16 +2246,17 @@ function RangeSegment({ value, onChange }: { value: TrendRange; onChange: (value
   );
 }
 
-function MetricTrendBars({ points, max, range, privateDisplayMode }: { points: TrendPoint[]; max: number; range: TrendRange; privateDisplayMode: boolean }) {
+function MetricTrendBars({ points, max, range, metricType, privateDisplayMode }: { points: TrendPoint[]; max: number; range: TrendRange; metricType: MetricType; privateDisplayMode: boolean }) {
   const hasValue = points.some((point) => isFiniteNumber(point.value));
   return (
     <>
       {!hasValue && <p className="empty-box">この期間の記録はまだありません。記録が増えると見えやすくなります。</p>}
-      <div className={`home-bars metric-bars range-${range}`} aria-label="指標の推移">
+      <div className={`home-bars metric-bars range-${range} metric-bars-${metricType}`} aria-label="指標の推移">
         {points.map((point, index) => (
           <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.date}-${index}`}>
             <div className={point.isActive ? "home-bar active" : "home-bar"} style={{ height: isFiniteNumber(point.value) ? `${Math.max(12, (point.value / max) * 100)}%` : "10%" }} />
-            <small>{privateDisplayMode ? "" : point.showLabel || range !== "month" ? point.label : ""}</small>
+            <small>{privateDisplayMode ? "" : (point.showLabel || range !== "month" ? point.label : "")}</small>
+            {range === "month" && !privateDisplayMode && <em>{point.count ? `${point.count}日` : "なし"}</em>}
           </div>
         ))}
       </div>
@@ -5590,7 +5592,7 @@ function currentMonthDateList() {
 function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendPoint[] {
   const byDate = new Map(records.map((record) => [record.date, record]));
   const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
-  return dates.map((date) => {
+  const points = dates.map((date) => {
     const day = Number(date.slice(8, 10));
     const value = byDate.get(date)?.mood ?? null;
     return {
@@ -5601,12 +5603,13 @@ function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendP
       showLabel: range !== "month" || day === 1 || day % 5 === 0 || date === today(),
     };
   });
+  return range === "month" ? aggregateMonthlyDataByWeek(points) : points;
 }
 
 function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]): TrendPoint[] {
   const byDate = new Map(dailyRecords.map((record) => [record.date, record]));
   const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
-  return dates.map((date) => {
+  const points = dates.map((date) => {
     const record = byDate.get(date);
     const value = metric === "sleep"
       ? record?.sleepHours ?? null
@@ -5620,6 +5623,30 @@ function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyReco
       value,
       isActive: date === today(),
       showLabel: range !== "month" || day === 1 || day % 5 === 0 || date === today(),
+    };
+  });
+  return range === "month" ? aggregateMonthlyDataByWeek(points) : points;
+}
+
+function aggregateMonthlyDataByWeek(points: TrendPoint[]): TrendPoint[] {
+  const groups = new Map<number, TrendPoint[]>();
+  points.forEach((point) => {
+    const day = Number(point.date.slice(8, 10));
+    const week = Math.min(5, Math.floor((day - 1) / 7) + 1);
+    groups.set(week, [...(groups.get(week) || []), point]);
+  });
+  return Array.from({ length: 5 }, (_, index) => {
+    const week = index + 1;
+    const items = groups.get(week) || [];
+    const values = items.map((item) => item.value).filter(isFiniteNumber);
+    const value = values.length ? values.reduce((sum, item) => sum + item, 0) / values.length : null;
+    return {
+      label: `${week}週`,
+      value,
+      date: items[0]?.date || `${today().slice(0, 7)}-${String(index * 7 + 1).padStart(2, "0")}`,
+      count: values.length,
+      showLabel: true,
+      isActive: items.some((item) => item.date === today()),
     };
   });
 }

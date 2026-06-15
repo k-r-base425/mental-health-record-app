@@ -503,6 +503,8 @@ h3 {
 }
 
 .summary-tile {
+  --metric-color: var(--color-primary);
+  --metric-soft: var(--color-primary-soft);
   min-width: 0;
   min-height: clamp(108px, 30vw, 126px);
   display: grid;
@@ -511,7 +513,7 @@ h3 {
   padding: clamp(12px, 3.3vw, 16px);
   border: 1px solid var(--color-border);
   border-radius: 24px;
-  background: var(--color-surface);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--metric-soft) 46%, var(--color-surface)), var(--color-surface) 78%);
   color: var(--color-text);
   text-align: left;
   box-shadow: var(--shadow-soft);
@@ -523,8 +525,8 @@ h3 {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--metric-soft);
+  color: var(--metric-color);
   font-size: 1.45rem;
 }
 
@@ -535,10 +537,28 @@ h3 {
 }
 
 .summary-tile strong {
-  color: var(--color-primary);
+  color: var(--metric-color);
   font-size: clamp(1.12rem, 4.8vw, 1.65rem);
   line-height: 1;
   overflow-wrap: anywhere;
+}
+
+.metric-summary-sleep,
+.metric-sleep {
+  --metric-color: #5f91c8;
+  --metric-soft: #e7f1fb;
+}
+
+.metric-summary-anxiety,
+.metric-anxiety {
+  --metric-color: #8d7ab8;
+  --metric-soft: #f0eaf7;
+}
+
+.metric-summary-activity,
+.metric-activity {
+  --metric-color: #4fae8e;
+  --metric-soft: #e4f6ee;
 }
 
 .summary-tile em {
@@ -650,9 +670,18 @@ h3 {
   font-weight: 800;
 }
 
+.home-bar-wrap em {
+  display: block;
+  margin-top: -5px;
+  color: var(--color-muted);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .home-bars.range-month {
-  gap: 4px;
-  padding-inline: 4px;
+  gap: clamp(10px, 3vw, 16px);
+  padding-inline: clamp(10px, 4vw, 18px);
 }
 
 .metric-bars {
@@ -660,7 +689,35 @@ h3 {
 }
 
 .metric-detail-hero {
-  background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary-soft) 42%, white), var(--color-surface) 74%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--metric-soft, var(--color-primary-soft)) 58%, white), var(--color-surface) 74%);
+  border-color: color-mix(in srgb, var(--metric-color, var(--color-primary)) 22%, var(--color-border));
+}
+
+.metric-detail .home-chart-card {
+  border-color: color-mix(in srgb, var(--metric-color) 18%, var(--color-border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--metric-soft) 54%, var(--color-surface)), var(--color-surface) 78%);
+}
+
+.metric-detail .segmented-mini .active {
+  color: var(--metric-color);
+}
+
+.metric-bars .home-bar {
+  background: color-mix(in srgb, var(--metric-color) 52%, white);
+}
+
+.metric-bars .home-bar.active {
+  background: var(--metric-color);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--metric-color) 14%, transparent);
+}
+
+.metric-bars.range-month .home-bar {
+  min-height: 18px;
+  border-radius: 18px 18px 8px 8px;
+}
+
+.metric-bars.range-month {
+  gap: clamp(12px, 4vw, 20px);
 }
 
 .wide-cta {
