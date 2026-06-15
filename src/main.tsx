@@ -2129,7 +2129,6 @@ function HomeTrendBars({ points, range, privateDisplayMode }: { points: TrendPoi
               style={{ height: isFiniteNumber(point.value) ? `${Math.max(14, (point.value / 10) * 100)}%` : "10%" }}
             />
             <small>{privateDisplayMode ? "" : visiblePoints.includes(point) ? point.label : ""}</small>
-            {range === "month" && !privateDisplayMode && <em>{point.count ? `${point.count}日` : "なし"}</em>}
           </div>
         ))}
       </div>
@@ -2256,7 +2255,6 @@ function MetricTrendBars({ points, max, range, metricType, privateDisplayMode }:
           <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.date}-${index}`}>
             <div className={point.isActive ? "home-bar active" : "home-bar"} style={{ height: isFiniteNumber(point.value) ? `${Math.max(12, (point.value / max) * 100)}%` : "10%" }} />
             <small>{privateDisplayMode ? "" : (point.showLabel || range !== "month" ? point.label : "")}</small>
-            {range === "month" && !privateDisplayMode && <em>{point.count ? `${point.count}日` : "なし"}</em>}
           </div>
         ))}
       </div>
@@ -5592,24 +5590,23 @@ function currentMonthDateList() {
 function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendPoint[] {
   const byDate = new Map(records.map((record) => [record.date, record]));
   const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
-  const points = dates.map((date) => {
+  return dates.map((date) => {
     const day = Number(date.slice(8, 10));
     const value = byDate.get(date)?.mood ?? null;
     return {
       date,
-      label: range === "day" ? "今日" : date.slice(5).replace("-", "/"),
+      label: range === "day" ? "今日" : range === "month" ? String(day) : date.slice(5).replace("-", "/"),
       value,
       isActive: date === today(),
-      showLabel: range !== "month" || day === 1 || day % 5 === 0 || date === today(),
+      showLabel: range !== "month" || shouldShowMonthlyDayLabel(day, dates.length, date),
     };
   });
-  return range === "month" ? aggregateMonthlyDataByWeek(points) : points;
 }
 
 function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]): TrendPoint[] {
   const byDate = new Map(dailyRecords.map((record) => [record.date, record]));
   const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
-  const points = dates.map((date) => {
+  return dates.map((date) => {
     const record = byDate.get(date);
     const value = metric === "sleep"
       ? record?.sleepHours ?? null
@@ -5619,36 +5616,16 @@ function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyReco
     const day = Number(date.slice(8, 10));
     return {
       date,
-      label: range === "day" ? "今日" : date.slice(5).replace("-", "/"),
+      label: range === "day" ? "今日" : range === "month" ? String(day) : date.slice(5).replace("-", "/"),
       value,
       isActive: date === today(),
-      showLabel: range !== "month" || day === 1 || day % 5 === 0 || date === today(),
+      showLabel: range !== "month" || shouldShowMonthlyDayLabel(day, dates.length, date),
     };
   });
-  return range === "month" ? aggregateMonthlyDataByWeek(points) : points;
 }
 
-function aggregateMonthlyDataByWeek(points: TrendPoint[]): TrendPoint[] {
-  const groups = new Map<number, TrendPoint[]>();
-  points.forEach((point) => {
-    const day = Number(point.date.slice(8, 10));
-    const week = Math.min(5, Math.floor((day - 1) / 7) + 1);
-    groups.set(week, [...(groups.get(week) || []), point]);
-  });
-  return Array.from({ length: 5 }, (_, index) => {
-    const week = index + 1;
-    const items = groups.get(week) || [];
-    const values = items.map((item) => item.value).filter(isFiniteNumber);
-    const value = values.length ? values.reduce((sum, item) => sum + item, 0) / values.length : null;
-    return {
-      label: `${week}週`,
-      value,
-      date: items[0]?.date || `${today().slice(0, 7)}-${String(index * 7 + 1).padStart(2, "0")}`,
-      count: values.length,
-      showLabel: true,
-      isActive: items.some((item) => item.date === today()),
-    };
-  });
+function shouldShowMonthlyDayLabel(day: number, daysInMonth: number, date: string) {
+  return day === 1 || day % 5 === 0 || day === daysInMonth || date === today();
 }
 
 function activityScoreForDate(date: string, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]) {

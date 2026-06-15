@@ -670,18 +670,28 @@ h3 {
   font-weight: 800;
 }
 
-.home-bar-wrap em {
-  display: block;
-  margin-top: -5px;
-  color: var(--color-muted);
-  font-size: 0.58rem;
-  font-style: normal;
-  font-weight: 800;
+.home-bars.range-month {
+  gap: clamp(1px, 0.7vw, 3px);
+  padding-inline: 4px;
 }
 
-.home-bars.range-month {
-  gap: clamp(10px, 3vw, 16px);
-  padding-inline: clamp(10px, 4vw, 18px);
+.home-bars.range-month .home-bar-wrap {
+  grid-template-rows: 1fr 18px;
+  gap: 5px;
+}
+
+.home-bars.range-month .home-bar {
+  min-height: 8px;
+  border-radius: 999px 999px 5px 5px;
+}
+
+.home-bars.range-month .home-bar-wrap.empty .home-bar {
+  min-height: 7px;
+}
+
+.home-bars.range-month .home-bar-wrap small {
+  font-size: clamp(0.48rem, 1.7vw, 0.6rem);
+  line-height: 1;
 }
 
 .metric-bars {
@@ -712,12 +722,13 @@ h3 {
 }
 
 .metric-bars.range-month .home-bar {
-  min-height: 18px;
-  border-radius: 18px 18px 8px 8px;
+  min-height: 8px;
+  border-radius: 999px 999px 5px 5px;
 }
 
 .metric-bars.range-month {
-  gap: clamp(12px, 4vw, 20px);
+  gap: clamp(1px, 0.7vw, 3px);
+  padding-inline: 4px;
 }
 
 .wide-cta {
