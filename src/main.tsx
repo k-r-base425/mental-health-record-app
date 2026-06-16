@@ -2270,37 +2270,39 @@ function getMetricBarStyle(metricType: ChartMetricType, value: number | null, ma
   const height = isFiniteNumber(value) ? `${Math.max(metricType === "mood" ? 14 : 12, (value / max) * 100)}%` : "10%";
   return {
     height,
-    backgroundColor: color,
+    background: color,
     boxShadow: isActive ? `0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 0 7px ${getMetricShadowColor(metricType, value)}` : undefined,
-    outline: isActive ? `1px solid ${color}` : undefined,
+    outline: isActive ? `2px solid ${color}` : undefined,
+    transform: isActive ? "scaleX(1.28)" : undefined,
+    transformOrigin: "bottom center",
   };
 }
 
 function getMetricBarColor(metricType: ChartMetricType, value: number | null) {
   if (!isFiniteNumber(value)) return "#dce5e2";
   if (metricType === "sleep") {
-    if (value >= 7) return "#5f91c8";
-    if (value >= 6) return "#82add8";
-    if (value >= 5) return "#aac9e6";
-    return "#cbd8e5";
+    if (value >= 7) return "#447fbf";
+    if (value >= 6) return "#78a9d8";
+    if (value >= 5) return "#aed0ea";
+    return "#d5e0ea";
   }
   if (metricType === "anxiety") {
-    if (value >= 9) return "#8d7ab8";
-    if (value >= 7) return "#a695cb";
-    if (value >= 4) return "#c5b9dd";
-    return "#e3dcf0";
+    if (value >= 9) return "#7e67ac";
+    if (value >= 7) return "#a18ccc";
+    if (value >= 4) return "#c8bce1";
+    return "#e8e1f4";
   }
   if (metricType === "activity") {
-    if (value >= 4) return "#4fae8e";
-    if (value >= 2) return "#76c9aa";
-    if (value >= 1) return "#a7deca";
-    return "#d7eee6";
+    if (value >= 4) return "#329c7b";
+    if (value >= 2) return "#66c5a4";
+    if (value >= 1) return "#a8decb";
+    return "#dcf0e9";
   }
   const score = metricType === "mood" ? value * 10 : value;
-  if (score >= 80) return "#36b59f";
-  if (score >= 60) return "#62c9b7";
+  if (score >= 80) return "#159f8d";
+  if (score >= 60) return "#57c6b6";
   if (score >= 40) return "#a4ded4";
-  return "#d5eee9";
+  return "#d9f0ea";
 }
 
 function getMetricShadowColor(metricType: ChartMetricType, value: number | null) {
@@ -2325,31 +2327,31 @@ function TrendLegend({ metricType }: { metricType: ChartMetricType }) {
 function getTrendLegendItems(metricType: ChartMetricType) {
   if (metricType === "sleep") {
     return [
-      { label: "長め", color: "#5f91c8" },
-      { label: "標準", color: "#82add8" },
-      { label: "短め", color: "#aac9e6" },
+      { label: "長め", color: "#447fbf" },
+      { label: "標準", color: "#78a9d8" },
+      { label: "短め", color: "#aed0ea" },
       { label: "未入力", color: "#dce5e2" },
     ];
   }
   if (metricType === "anxiety") {
     return [
-      { label: "低め", color: "#e3dcf0" },
-      { label: "中間", color: "#c5b9dd" },
-      { label: "高め", color: "#8d7ab8" },
+      { label: "低め", color: "#e8e1f4" },
+      { label: "中間", color: "#c8bce1" },
+      { label: "高め", color: "#7e67ac" },
       { label: "未入力", color: "#dce5e2" },
     ];
   }
   if (metricType === "activity") {
     return [
-      { label: "多め", color: "#4fae8e" },
-      { label: "中間", color: "#76c9aa" },
-      { label: "少なめ", color: "#a7deca" },
+      { label: "多め", color: "#329c7b" },
+      { label: "中間", color: "#66c5a4" },
+      { label: "少なめ", color: "#a8decb" },
       { label: "未入力", color: "#dce5e2" },
     ];
   }
   return [
-    { label: "高め", color: "#36b59f" },
-    { label: "中間", color: "#62c9b7" },
+    { label: "高め", color: "#159f8d" },
+    { label: "中間", color: "#57c6b6" },
     { label: "低め", color: "#a4ded4" },
     { label: "未入力", color: "#dce5e2" },
   ];
@@ -5683,23 +5685,24 @@ function currentMonthDateList() {
 function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendPoint[] {
   const byDate = new Map(records.map((record) => [record.date, record]));
   const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
-  return dates.map((date) => {
+  const points = dates.map((date) => {
     const day = Number(date.slice(8, 10));
     const value = byDate.get(date)?.mood ?? null;
     return {
       date,
       label: range === "day" ? "今日" : range === "month" ? String(day) : date.slice(5).replace("-", "/"),
       value,
-      isActive: date === today(),
+      isActive: false,
       showLabel: range !== "month" || shouldShowMonthlyDayLabel(day, dates.length, date),
     };
   });
+  return markActiveTrendPoint(points, range);
 }
 
 function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]): TrendPoint[] {
   const byDate = new Map(dailyRecords.map((record) => [record.date, record]));
   const dates = range === "day" ? [today()] : range === "week" ? recentDateList(7) : currentMonthDateList();
-  return dates.map((date) => {
+  const points = dates.map((date) => {
     const record = byDate.get(date);
     const value = metric === "sleep"
       ? record?.sleepHours ?? null
@@ -5711,14 +5714,26 @@ function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyReco
       date,
       label: range === "day" ? "今日" : range === "month" ? String(day) : date.slice(5).replace("-", "/"),
       value,
-      isActive: date === today(),
+      isActive: false,
       showLabel: range !== "month" || shouldShowMonthlyDayLabel(day, dates.length, date),
     };
   });
+  return markActiveTrendPoint(points, range);
 }
 
 function shouldShowMonthlyDayLabel(day: number, daysInMonth: number, date: string) {
   return day === 1 || day % 5 === 0 || day === daysInMonth || date === today();
+}
+
+function markActiveTrendPoint(points: TrendPoint[], range: TrendRange) {
+  const todayPoint = points.find((point) => point.date === today() && isFiniteNumber(point.value));
+  const latestValuePoint = [...points].reverse().find((point) => isFiniteNumber(point.value));
+  const activeDate = todayPoint?.date || latestValuePoint?.date || today();
+  return points.map((point) => ({
+    ...point,
+    isActive: point.date === activeDate,
+    showLabel: point.showLabel || (range === "month" && point.date === activeDate),
+  }));
 }
 
 function activityScoreForDate(date: string, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]) {
