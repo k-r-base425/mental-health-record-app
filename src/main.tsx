@@ -214,6 +214,7 @@ type StabilityScore = {
 
 type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen" | "metricDetail";
 type MetricType = "sleep" | "anxiety" | "activity";
+type ChartMetricType = MetricType | "mood" | "stability";
 type TrendRange = "month" | "week" | "day";
 type TrendPoint = { label: string; value: number | null; date: string; isActive?: boolean; showLabel?: boolean; count?: number };
 type RecordsTab = "daily" | "sudden";
@@ -2126,12 +2127,13 @@ function HomeTrendBars({ points, range, privateDisplayMode }: { points: TrendPoi
           <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.label}-${index}`}>
             <div
               className={point.isActive ? "home-bar active" : "home-bar"}
-              style={{ height: isFiniteNumber(point.value) ? `${Math.max(14, (point.value / 10) * 100)}%` : "10%" }}
+              style={getMetricBarStyle("mood", point.value, 10, Boolean(point.isActive))}
             />
             <small>{privateDisplayMode ? "" : visiblePoints.includes(point) ? point.label : ""}</small>
           </div>
         ))}
       </div>
+      <TrendLegend metricType="mood" />
       <p className="tiny-note">{range === "day" ? "今日の気分スコアを表示しています。" : "未入力の日は0として扱わず、薄い表示にしています。参考表示です。"}</p>
     </>
   );
@@ -2253,13 +2255,104 @@ function MetricTrendBars({ points, max, range, metricType, privateDisplayMode }:
       <div className={`home-bars metric-bars range-${range} metric-bars-${metricType}`} aria-label="指標の推移">
         {points.map((point, index) => (
           <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.date}-${index}`}>
-            <div className={point.isActive ? "home-bar active" : "home-bar"} style={{ height: isFiniteNumber(point.value) ? `${Math.max(12, (point.value / max) * 100)}%` : "10%" }} />
+            <div className={point.isActive ? "home-bar active" : "home-bar"} style={getMetricBarStyle(metricType, point.value, max, Boolean(point.isActive))} />
             <small>{privateDisplayMode ? "" : (point.showLabel || range !== "month" ? point.label : "")}</small>
           </div>
         ))}
       </div>
+      <TrendLegend metricType={metricType} />
     </>
   );
+}
+
+function getMetricBarStyle(metricType: ChartMetricType, value: number | null, max: number, isActive: boolean): React.CSSProperties {
+  const color = getMetricBarColor(metricType, value);
+  const height = isFiniteNumber(value) ? `${Math.max(metricType === "mood" ? 14 : 12, (value / max) * 100)}%` : "10%";
+  return {
+    height,
+    backgroundColor: color,
+    boxShadow: isActive ? `0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 0 7px ${getMetricShadowColor(metricType, value)}` : undefined,
+    outline: isActive ? `1px solid ${color}` : undefined,
+  };
+}
+
+function getMetricBarColor(metricType: ChartMetricType, value: number | null) {
+  if (!isFiniteNumber(value)) return "#dce5e2";
+  if (metricType === "sleep") {
+    if (value >= 7) return "#5f91c8";
+    if (value >= 6) return "#82add8";
+    if (value >= 5) return "#aac9e6";
+    return "#cbd8e5";
+  }
+  if (metricType === "anxiety") {
+    if (value >= 9) return "#8d7ab8";
+    if (value >= 7) return "#a695cb";
+    if (value >= 4) return "#c5b9dd";
+    return "#e3dcf0";
+  }
+  if (metricType === "activity") {
+    if (value >= 4) return "#4fae8e";
+    if (value >= 2) return "#76c9aa";
+    if (value >= 1) return "#a7deca";
+    return "#d7eee6";
+  }
+  const score = metricType === "mood" ? value * 10 : value;
+  if (score >= 80) return "#36b59f";
+  if (score >= 60) return "#62c9b7";
+  if (score >= 40) return "#a4ded4";
+  return "#d5eee9";
+}
+
+function getMetricShadowColor(metricType: ChartMetricType, value: number | null) {
+  const color = getMetricBarColor(metricType, value).replace("#", "");
+  return `#${color}3d`;
+}
+
+function TrendLegend({ metricType }: { metricType: ChartMetricType }) {
+  const items = getTrendLegendItems(metricType);
+  return (
+    <div className="trend-legend" aria-label="グラフの色の目安">
+      {items.map((item) => (
+        <span key={item.label}>
+          <i style={{ backgroundColor: item.color }} />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function getTrendLegendItems(metricType: ChartMetricType) {
+  if (metricType === "sleep") {
+    return [
+      { label: "長め", color: "#5f91c8" },
+      { label: "標準", color: "#82add8" },
+      { label: "短め", color: "#aac9e6" },
+      { label: "未入力", color: "#dce5e2" },
+    ];
+  }
+  if (metricType === "anxiety") {
+    return [
+      { label: "低め", color: "#e3dcf0" },
+      { label: "中間", color: "#c5b9dd" },
+      { label: "高め", color: "#8d7ab8" },
+      { label: "未入力", color: "#dce5e2" },
+    ];
+  }
+  if (metricType === "activity") {
+    return [
+      { label: "多め", color: "#4fae8e" },
+      { label: "中間", color: "#76c9aa" },
+      { label: "少なめ", color: "#a7deca" },
+      { label: "未入力", color: "#dce5e2" },
+    ];
+  }
+  return [
+    { label: "高め", color: "#36b59f" },
+    { label: "中間", color: "#62c9b7" },
+    { label: "低め", color: "#a4ded4" },
+    { label: "未入力", color: "#dce5e2" },
+  ];
 }
 
 function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords, onCalendar, onThought }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; onDaily: () => void; onSudden: () => void; onRecords: () => void; onCalendar: () => void; onThought: () => void }) {
