@@ -720,6 +720,158 @@ h3 {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
 }
 
+.view-segment {
+  width: fit-content;
+  margin: -2px 0 10px auto;
+}
+
+.monthly-ring-view {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 8px;
+  min-width: 0;
+}
+
+.monthly-ring-view.compact {
+  gap: 10px;
+}
+
+.ring-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px 5px;
+  min-width: 0;
+}
+
+.ring-day-cell {
+  min-width: 0;
+  min-height: 70px;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 2px;
+  padding: 5px 1px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-primary-soft));
+  color: var(--color-text);
+}
+
+.monthly-ring-view.compact .ring-day-cell {
+  min-height: 63px;
+  border-radius: 14px;
+}
+
+.ring-day-cell.empty {
+  opacity: 0.64;
+}
+
+.ring-day-cell.today {
+  border-color: color-mix(in srgb, var(--color-primary) 48%, transparent);
+}
+
+.ring-day-cell.selected {
+  background: color-mix(in srgb, var(--color-primary-soft) 78%, white);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-primary) 68%, transparent), var(--shadow-subtle);
+}
+
+.ring-date {
+  color: var(--color-muted);
+  font-size: clamp(0.58rem, 1.8vw, 0.7rem);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.multi-ring {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.ring-track,
+.ring-value {
+  fill: none;
+  stroke-width: 4;
+}
+
+.ring-track {
+  stroke: color-mix(in srgb, var(--color-border) 62%, white);
+}
+
+.ring-value {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 180ms ease;
+}
+
+.ring-badges {
+  min-height: 7px;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
+.ring-badges i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+}
+
+.badge-wave { background: #a18ccc; }
+.badge-thought { background: #57c6b6; }
+.badge-ifthen { background: #329c7b; }
+.badge-care { background: #447fbf; }
+
+.ring-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  color: var(--color-muted);
+  font-size: clamp(0.66rem, 2vw, 0.76rem);
+  font-weight: 800;
+}
+
+.ring-legend.compact {
+  gap: 5px 8px;
+}
+
+.ring-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.ring-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.legend-mood { background: #159f8d; }
+.legend-activity { background: #329c7b; }
+.legend-sleep { background: #447fbf; }
+.legend-dot { background: #a18ccc; }
+
+.ring-day-detail {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-primary-soft));
+}
+
+.ring-day-detail > strong {
+  color: var(--color-heading);
+  font-size: 0.95rem;
+}
+
+.ring-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .metric-bars {
   height: 190px;
 }
