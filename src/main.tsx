@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -1949,7 +1949,11 @@ function Home({
   const todayCareCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
   const todayIfThenCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
   const trendPoints = buildMoodTrendPoints(dailyRecords, moodRange);
-  const ringDays = buildDailyRingData(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const ringDays = useMemo(
+    () => buildDailyRingData(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs),
+    [dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs],
+  );
+  const homeRingDays = ringDays.filter((day) => day.date <= today()).slice(-14);
 
   return (
     <section className="home-screen">
@@ -2080,7 +2084,7 @@ function Home({
           points={trendPoints}
           range={moodRange}
           monthView={monthChartView}
-          ringDays={ringDays}
+          ringDays={homeRingDays}
           privateDisplayMode={privateDisplayMode}
           onOpenRingDate={onCalendar}
         />
@@ -2380,6 +2384,11 @@ function MonthlyRingView({
   summary?: RingMonthlySummary;
 }) {
   const [selectedDate, setSelectedDate] = useState(today());
+  useEffect(() => {
+    if (!days.length) return;
+    if (days.some((day) => day.date === selectedDate)) return;
+    setSelectedDate(days.find((day) => day.isToday)?.date || days.find(hasAnyRingData)?.date || days[0].date);
+  }, [days, selectedDate]);
   const selected = days.find((day) => day.date === selectedDate) || days.find((day) => day.hasDailyRecord) || days[0];
   return (
     <div className={compact ? "monthly-ring-view compact" : "monthly-ring-view"}>
@@ -2426,16 +2435,16 @@ function MonthlyRingView({
           {privateDisplayMode ? (
             <p>詳細は非表示です。記録の有無だけ表示しています。</p>
           ) : (
-            <div className="ring-detail-grid">
-              <Metric label="安定度/気分" value={formatRingValue(selected.stabilityScore ?? selected.moodScore, "%")} />
-              <Metric label="気分" value={selected.moodScore === null ? "記録なし" : `${Math.round(selected.moodScore / 10)}/10`} />
-              <Metric label="不安感" value={formatScore(selected.anxietyScore)} />
-              <Metric label="睡眠" value={selected.sleepHours === null ? "記録なし" : `${selected.sleepHours}h`} />
-              <Metric label="活動" value={selected.activityScore === null ? "記録なし" : `${selected.activityScore}%`} />
-              <Metric label="突発ログ" value={`${selected.suddenLogCount}件`} />
-              <Metric label="思考メモ" value={`${selected.thoughtNoteCount}件`} />
-              <Metric label="If-Then" value={`${selected.ifThenLogCount}回`} />
-              <Metric label="セルフケア" value={`${selected.selfCareLogCount}回`} />
+            <div className="ring-detail-list">
+              <RingDetailRow label="安定度 / 気分" value={formatRingValue(selected.stabilityScore ?? selected.moodScore, "%")} colorClass="mood" />
+              <RingDetailRow label="気分" value={selected.moodScore === null ? "記録なし" : `${Math.round(selected.moodScore / 10)}/10`} colorClass="mood" />
+              <RingDetailRow label="睡眠" value={selected.sleepHours === null ? "記録なし" : `${selected.sleepHours}h`} colorClass="sleep" />
+              <RingDetailRow label="活動" value={selected.activityScore === null ? "記録なし" : `${selected.activityScore}%`} colorClass="activity" />
+              <RingDetailRow label="不安感" value={formatScore(selected.anxietyScore)} colorClass="thought" />
+              <RingDetailRow label="突発ログ" value={`${selected.suddenLogCount}件`} colorClass="wave" />
+              <RingDetailRow label="思考メモ" value={`${selected.thoughtNoteCount}件`} colorClass="thought" />
+              <RingDetailRow label="If-Then" value={`${selected.ifThenLogCount}回`} colorClass="ifthen" />
+              <RingDetailRow label="セルフケア" value={`${selected.selfCareLogCount}回`} colorClass="care" />
             </div>
           )}
           <div className="data-actions">
@@ -2451,6 +2460,15 @@ function MonthlyRingView({
       {selected && compact && onOpenDate && actionLabel && (
         <button className="secondary-btn no-margin" onClick={() => onOpenDate(selected.date)} type="button">{actionLabel}</button>
       )}
+    </div>
+  );
+}
+
+function RingDetailRow({ label, value, colorClass }: { label: string; value: string; colorClass: "mood" | "activity" | "sleep" | "wave" | "thought" | "ifthen" | "care" }) {
+  return (
+    <div className="ring-detail-row">
+      <span><i className={`ring-detail-dot ${colorClass}`} />{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -2506,7 +2524,16 @@ function RingLegend({ compact }: { compact?: boolean }) {
       <span><i className="legend-mood" />外側: 安定度/気分</span>
       <span><i className="legend-activity" />中央: 活動</span>
       <span><i className="legend-sleep" />内側: 睡眠</span>
-      <span><i className="legend-dot" />点: 記録あり</span>
+      {compact ? (
+        <span><i className="legend-dot" />点: 記録あり</span>
+      ) : (
+        <>
+          <span><i className="legend-wave" />紫: 突発ログ</span>
+          <span><i className="legend-thought" />ラベンダー: 思考メモ</span>
+          <span><i className="legend-ifthen" />ティール: If-Then</span>
+          <span><i className="legend-care" />ミント: セルフケア</span>
+        </>
+      )}
     </div>
   );
 }
@@ -2997,8 +3024,11 @@ function CalendarScreen({
   const [calendarView, setCalendarView] = useState<CalendarView>("ring");
   const monthDays = buildCalendarDays(currentMonth);
   const summary = getMonthlySummary(currentMonth, dailyRecords, suddenLogs, selfCareLogs);
-  const ringDays = buildDailyRingData(currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
-  const ringSummary = getRingMonthlySummary(ringDays);
+  const ringDays = useMemo(
+    () => buildDailyRingData(currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs),
+    [currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs],
+  );
+  const ringSummary = useMemo(() => getRingMonthlySummary(ringDays), [ringDays]);
   const selectedDaily = dailyRecords.find((record) => record.date === selectedDate);
   const selectedSudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === selectedDate).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   const selectedCare = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === selectedDate).sort((a, b) => a.createdAt.localeCompare(b.createdAt));

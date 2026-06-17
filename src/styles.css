@@ -739,13 +739,13 @@ h3 {
 .ring-month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px 5px;
+  gap: clamp(5px, 1.4vw, 8px) clamp(3px, 1vw, 5px);
   min-width: 0;
 }
 
 .ring-day-cell {
   min-width: 0;
-  min-height: 74px;
+  min-height: clamp(66px, 17vw, 78px);
   display: grid;
   justify-items: center;
   align-content: start;
@@ -758,7 +758,7 @@ h3 {
 }
 
 .monthly-ring-view.compact .ring-day-cell {
-  min-height: 63px;
+  min-height: clamp(58px, 15vw, 64px);
   border-radius: 14px;
 }
 
@@ -769,14 +769,16 @@ h3 {
 
 .ring-day-cell.today {
   border-color: color-mix(in srgb, var(--color-primary) 48%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 78%, var(--color-primary-soft));
 }
 
 .ring-day-cell.selected {
   background: color-mix(in srgb, var(--color-primary-soft) 78%, white);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-primary) 68%, transparent), var(--shadow-subtle);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-primary) 70%, transparent), 0 8px 20px rgba(77, 183, 162, 0.18);
 }
 
 .ring-date {
+  position: relative;
   color: var(--color-muted);
   font-size: clamp(0.58rem, 1.8vw, 0.7rem);
   font-weight: 900;
@@ -787,10 +789,29 @@ h3 {
   color: var(--color-primary);
 }
 
+.ring-day-cell.today .ring-date::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transform: translateX(-50%);
+}
+
 .multi-ring {
   display: block;
+  width: clamp(38px, 10.4vw, 46px);
+  height: clamp(38px, 10.4vw, 46px);
   max-width: 100%;
   overflow: visible;
+}
+
+.monthly-ring-view.compact .multi-ring {
+  width: clamp(33px, 9vw, 38px);
+  height: clamp(33px, 9vw, 38px);
 }
 
 .ring-track,
@@ -856,6 +877,10 @@ h3 {
 .legend-activity { background: #329c7b; }
 .legend-sleep { background: #447fbf; }
 .legend-dot { background: #a18ccc; }
+.legend-wave { background: #a18ccc; }
+.legend-thought { background: #c8bce1; }
+.legend-ifthen { background: #159f8d; }
+.legend-care { background: #57c6b6; }
 
 .ring-month-summary {
   display: grid;
@@ -881,11 +906,62 @@ h3 {
   font-size: 0.95rem;
 }
 
-.ring-detail-grid {
+.ring-detail-grid,
+.ring-detail-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+
+.ring-detail-list {
+  grid-template-columns: 1fr;
+}
+
+.ring-detail-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-surface) 90%, white);
+}
+
+.ring-detail-row span,
+.ring-detail-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ring-detail-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-muted);
+  font-weight: 800;
+}
+
+.ring-detail-row strong {
+  color: var(--color-heading);
+  text-align: right;
+}
+
+.ring-detail-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.ring-detail-dot.mood { background: #159f8d; }
+.ring-detail-dot.activity { background: #329c7b; }
+.ring-detail-dot.sleep { background: #447fbf; }
+.ring-detail-dot.wave { background: #a18ccc; }
+.ring-detail-dot.thought { background: #c8bce1; }
+.ring-detail-dot.ifthen { background: #159f8d; }
+.ring-detail-dot.care { background: #57c6b6; }
 
 .calendar-bar-view {
   display: grid;
