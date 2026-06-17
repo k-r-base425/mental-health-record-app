@@ -2177,6 +2177,13 @@ function HomeTrendBars({
   privateDisplayMode: boolean;
   onOpenRingDate: () => void;
 }) {
+  const defaultActiveDate = points.find((point) => point.isActive)?.date || points.find((point) => isFiniteNumber(point.value))?.date || points[0]?.date || "";
+  const [selectedDate, setSelectedDate] = useState(defaultActiveDate);
+  useEffect(() => {
+    if (!points.length) return;
+    if (points.some((point) => point.date === selectedDate)) return;
+    setSelectedDate(defaultActiveDate);
+  }, [defaultActiveDate, points, selectedDate]);
   const visiblePoints = points.filter((point) => point.showLabel || range !== "month");
   const hasValue = points.some((point) => isFiniteNumber(point.value));
   if (range === "month" && monthView === "ring") {
@@ -2194,15 +2201,26 @@ function HomeTrendBars({
         <p className="empty-box">{range === "day" ? "今日はまだ記録がありません。" : "この期間の気分記録はまだありません。記録が増えると見えやすくなります。"}</p>
       )}
       <div className={`home-bars range-${range}`} aria-label="気分の推移">
-        {points.map((point, index) => (
-          <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.label}-${index}`}>
+        {points.map((point, index) => {
+          const isSelected = point.date === selectedDate;
+          const shouldShowLabel = privateDisplayMode ? false : isSelected || visiblePoints.includes(point);
+          return (
+          <button
+            className={[point.value === null ? "home-bar-wrap empty" : "home-bar-wrap", isSelected ? "selected" : ""].filter(Boolean).join(" ")}
+            key={`${point.label}-${index}`}
+            onClick={() => setSelectedDate(point.date)}
+            type="button"
+            aria-pressed={isSelected}
+            aria-label={`${point.label} ${point.value === null ? "記録なし" : `気分 ${point.value}`}`}
+          >
             <div
-              className={point.isActive ? "home-bar active" : "home-bar"}
-              style={getMetricBarStyle("mood", point.value, 10, Boolean(point.isActive))}
+              className={isSelected ? "home-bar active" : "home-bar"}
+              style={getMetricBarStyle("mood", point.value, 10, isSelected)}
             />
-            <small>{privateDisplayMode ? "" : visiblePoints.includes(point) ? point.label : ""}</small>
-          </div>
-        ))}
+            <small>{shouldShowLabel ? point.label : ""}</small>
+          </button>
+          );
+        })}
       </div>
       <TrendLegend metricType="mood" />
       <p className="tiny-note">{range === "day" ? "今日の気分スコアを表示しています。" : "未入力の日は0として扱わず、薄い表示にしています。参考表示です。"}</p>
@@ -6136,7 +6154,7 @@ function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyReco
 }
 
 function shouldShowMonthlyDayLabel(day: number, daysInMonth: number, date: string) {
-  return day === 1 || day % 5 === 0 || day === daysInMonth || date === today();
+  return day === 1 || day % 10 === 0 || day === daysInMonth || date === today();
 }
 
 function markActiveTrendPoint(points: TrendPoint[], range: TrendRange) {

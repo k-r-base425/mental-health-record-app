@@ -625,6 +625,7 @@ h3 {
 }
 
 .home-bars {
+  position: relative;
   height: 210px;
   display: flex;
   align-items: end;
@@ -632,12 +633,21 @@ h3 {
   margin: 18px 0 20px;
   padding: 18px 6px 0;
   background:
-    repeating-linear-gradient(to top, transparent 0 42px, rgba(100, 125, 118, 0.12) 43px 44px),
+    linear-gradient(to bottom,
+      rgba(21, 159, 141, 0.07) 0 32%,
+      rgba(87, 198, 182, 0.045) 32% 66%,
+      rgba(164, 222, 212, 0.04) 66% 100%),
+    repeating-linear-gradient(to top, transparent 0 42px, rgba(100, 125, 118, 0.11) 43px 44px),
     linear-gradient(to bottom, transparent, rgba(73, 183, 152, 0.03));
   border-radius: 22px;
+  overflow: hidden;
 }
 
 .home-bar-wrap {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
   min-width: 0;
   flex: 1;
   height: 100%;
@@ -645,6 +655,13 @@ h3 {
   grid-template-rows: 1fr 22px;
   gap: 8px;
   text-align: center;
+  cursor: pointer;
+}
+
+.home-bar-wrap:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 70%, white);
+  outline-offset: 2px;
+  border-radius: 12px;
 }
 
 .home-bar {
@@ -668,6 +685,8 @@ h3 {
   color: var(--color-muted);
   font-size: 0.66rem;
   font-weight: 800;
+  min-height: 1em;
+  align-self: center;
 }
 
 .home-bars.range-month {
@@ -692,6 +711,16 @@ h3 {
 .home-bars.range-month .home-bar-wrap small {
   font-size: clamp(0.48rem, 1.7vw, 0.6rem);
   line-height: 1;
+}
+
+.home-bars.range-month .home-bar-wrap.selected small {
+  justify-self: center;
+  min-width: 1.45rem;
+  padding: 3px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 82%, white);
+  color: white;
+  box-shadow: 0 4px 10px rgba(21, 159, 141, 0.22);
 }
 
 .trend-legend {
