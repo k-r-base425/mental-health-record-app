@@ -218,19 +218,33 @@ type ChartMetricType = MetricType | "mood" | "stability";
 type TrendRange = "month" | "week" | "day";
 type TrendPoint = { label: string; value: number | null; date: string; isActive?: boolean; showLabel?: boolean; count?: number };
 type MonthChartView = "bar" | "ring";
-type CalendarView = "calendar" | "ring";
+type CalendarView = "calendar" | "ring" | "bar";
 type DailyRingData = {
   date: string;
+  day: number;
   moodScore: number | null;
+  anxietyScore: number | null;
   stabilityScore: number | null;
   sleepScore: number | null;
   sleepHours: number | null;
   activityScore: number | null;
   hasDailyRecord: boolean;
+  isToday: boolean;
+  isMissing: boolean;
   suddenLogCount: number;
   thoughtNoteCount: number;
   ifThenLogCount: number;
   selfCareLogCount: number;
+};
+type RingMonthlySummary = {
+  recordDays: number;
+  averageStability: number | null;
+  averageSleep: number | null;
+  activityDays: number;
+  suddenCount: number;
+  thoughtCount: number;
+  ifThenCount: number;
+  selfCareCount: number;
 };
 type RecordsTab = "daily" | "sudden";
 type DetailItem = { kind: "daily"; record: DailyRecord } | { kind: "sudden"; record: SuddenLog };
@@ -2336,26 +2350,54 @@ function MetricTrendBars({ points, max, range, metricType, privateDisplayMode }:
   );
 }
 
+function CalendarMonthBarView({ currentMonth, dailyRecords, privateDisplayMode }: { currentMonth: string; dailyRecords: DailyRecord[]; privateDisplayMode: boolean }) {
+  const points = buildMoodTrendPointsForMonth(currentMonth, dailyRecords);
+  return (
+    <div className="calendar-bar-view">
+      <MetricTrendBars points={points} max={10} range="month" metricType="mood" privateDisplayMode={privateDisplayMode} />
+      <p className="tiny-note">月内の日別の気分を表示しています。未入力の日は0として扱わず、薄い表示にしています。</p>
+    </div>
+  );
+}
+
 function MonthlyRingView({
   days,
   privateDisplayMode,
   compact = false,
   onOpenDate,
+  onEditDate,
   actionLabel,
+  editLabel = "この日の記録を編集・追加",
+  summary,
 }: {
   days: DailyRingData[];
   privateDisplayMode: boolean;
   compact?: boolean;
   onOpenDate?: (date: string) => void;
+  onEditDate?: (date: string) => void;
   actionLabel?: string;
+  editLabel?: string;
+  summary?: RingMonthlySummary;
 }) {
   const [selectedDate, setSelectedDate] = useState(today());
   const selected = days.find((day) => day.date === selectedDate) || days.find((day) => day.hasDailyRecord) || days[0];
   return (
     <div className={compact ? "monthly-ring-view compact" : "monthly-ring-view"}>
+      {summary && !compact && (
+        <div className="ring-month-summary" aria-label="リング月間サマリー">
+          <Metric label="記録日数" value={privateDisplayMode ? "記録あり" : `${summary.recordDays}日`} />
+          <Metric label="平均安定度" value={privateDisplayMode ? "非表示です" : formatRingValue(summary.averageStability, "%")} />
+          <Metric label="平均睡眠" value={privateDisplayMode ? "非表示です" : summary.averageSleep === null ? "記録なし" : `${summary.averageSleep.toFixed(1)}h`} />
+          <Metric label="活動があった日" value={privateDisplayMode ? "記録あり" : `${summary.activityDays}日`} />
+          <Metric label="突発ログ" value={privateDisplayMode ? "記録あり" : `${summary.suddenCount}件`} />
+          <Metric label="思考メモ" value={privateDisplayMode ? "記録あり" : `${summary.thoughtCount}件`} />
+          <Metric label="If-Then" value={privateDisplayMode ? "記録あり" : `${summary.ifThenCount}回`} />
+          <Metric label="セルフケア" value={privateDisplayMode ? "記録あり" : `${summary.selfCareCount}回`} />
+        </div>
+      )}
       <div className="ring-month-grid" aria-label="月間リングビュー">
         {days.map((day) => {
-          const isToday = day.date === today();
+          const isToday = day.isToday;
           const isSelected = day.date === selected?.date;
           const hasAny = hasAnyRingData(day);
           return (
@@ -2366,7 +2408,7 @@ function MonthlyRingView({
               type="button"
               aria-label={`${formatJapaneseDate(day.date)} のリング`}
             >
-              <span className="ring-date">{Number(day.date.slice(8, 10))}</span>
+              <span className="ring-date">{day.day}</span>
               <MultiMetricRing day={day} size={compact ? 40 : 48} privateDisplayMode={privateDisplayMode} />
               <RingBadges day={day} />
             </button>
@@ -2374,14 +2416,20 @@ function MonthlyRingView({
         })}
       </div>
       <RingLegend compact={compact} />
-      {selected && (
+      {compact && (
+        <p className="tiny-note">外側は安定度/気分、中央は活動、内側は睡眠です。詳しく見ると日別の内容を確認できます。</p>
+      )}
+      {selected && !compact && (
         <div className="ring-day-detail">
-          <strong>{selected.date} の記録</strong>
+          <strong>{formatJapaneseDate(selected.date)} の記録</strong>
+          <p className="tiny-note">記録上の参考情報です。未入力の項目は0として扱っていません。</p>
           {privateDisplayMode ? (
             <p>詳細は非表示です。記録の有無だけ表示しています。</p>
           ) : (
             <div className="ring-detail-grid">
               <Metric label="安定度/気分" value={formatRingValue(selected.stabilityScore ?? selected.moodScore, "%")} />
+              <Metric label="気分" value={selected.moodScore === null ? "記録なし" : `${Math.round(selected.moodScore / 10)}/10`} />
+              <Metric label="不安感" value={formatScore(selected.anxietyScore)} />
               <Metric label="睡眠" value={selected.sleepHours === null ? "記録なし" : `${selected.sleepHours}h`} />
               <Metric label="活動" value={selected.activityScore === null ? "記録なし" : `${selected.activityScore}%`} />
               <Metric label="突発ログ" value={`${selected.suddenLogCount}件`} />
@@ -2390,9 +2438,17 @@ function MonthlyRingView({
               <Metric label="セルフケア" value={`${selected.selfCareLogCount}回`} />
             </div>
           )}
+          <div className="data-actions">
+            {onOpenDate && actionLabel && (
+              <button className="secondary-btn no-margin" onClick={() => onOpenDate(selected.date)} type="button">{actionLabel}</button>
+            )}
+            {onEditDate && (
+              <button className="secondary-btn no-margin" onClick={() => onEditDate(selected.date)} type="button">{editLabel}</button>
+            )}
+          </div>
         </div>
       )}
-      {selected && onOpenDate && actionLabel && (
+      {selected && compact && onOpenDate && actionLabel && (
         <button className="secondary-btn no-margin" onClick={() => onOpenDate(selected.date)} type="button">{actionLabel}</button>
       )}
     </div>
@@ -2938,10 +2994,11 @@ function CalendarScreen({
 }) {
   const [currentMonth, setCurrentMonth] = useState(today().slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today());
-  const [calendarView, setCalendarView] = useState<CalendarView>("calendar");
+  const [calendarView, setCalendarView] = useState<CalendarView>("ring");
   const monthDays = buildCalendarDays(currentMonth);
   const summary = getMonthlySummary(currentMonth, dailyRecords, suddenLogs, selfCareLogs);
   const ringDays = buildDailyRingData(currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const ringSummary = getRingMonthlySummary(ringDays);
   const selectedDaily = dailyRecords.find((record) => record.date === selectedDate);
   const selectedSudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === selectedDate).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   const selectedCare = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === selectedDate).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -2972,7 +3029,7 @@ function CalendarScreen({
       <section className="section-block calendar-panel">
         <div className="section-title-row calendar-view-row">
           <h2>月間表示</h2>
-          <ViewSegment value={calendarView} onChange={setCalendarView} labels={{ calendar: "カレンダー", ring: "リング" }} />
+          <ViewSegment value={calendarView} onChange={setCalendarView} labels={{ calendar: "カレンダー", ring: "リング", bar: "バー" }} />
         </div>
         {calendarView === "calendar" ? (
           <>
@@ -3028,15 +3085,23 @@ function CalendarScreen({
               })}
             </div>
           </>
+        ) : calendarView === "bar" ? (
+          <CalendarMonthBarView currentMonth={currentMonth} dailyRecords={dailyRecords} privateDisplayMode={privateDisplayMode} />
         ) : (
           <MonthlyRingView
             days={ringDays}
             privateDisplayMode={privateDisplayMode}
+            summary={ringSummary}
             onOpenDate={(date) => {
               setSelectedDate(date);
               setCalendarView("calendar");
             }}
+            onEditDate={(date) => {
+              const daily = dailyRecords.find((record) => record.date === date);
+              daily ? onEditDaily(date) : onAddDaily(date);
+            }}
             actionLabel="この日の記録を見る"
+            editLabel="この日の記録を編集・追加"
           />
         )}
       </section>
@@ -5926,16 +5991,21 @@ function buildDailyRingData(
     const thoughtNoteCount = thoughtNotes.filter((note) => note.date === date).length;
     const selfCareLogCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === date).length;
     const ifThenLogCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === date).length;
-    const activityRaw = activityScoreForDate(date, dailyRecords, selfCareLogs, ifThenLogs);
-    const stability = calculateStabilityScore(date, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs).score;
+    const activityScore = scoreActivityRing(date, dailyRecords, selfCareLogs, ifThenLogs);
+    const hasAny = Boolean(daily) || suddenLogCount > 0 || thoughtNoteCount > 0 || selfCareLogCount > 0 || ifThenLogCount > 0;
+    const stability = hasAny ? calculateStabilityScore(date, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs).score : null;
     return {
       date,
+      day: Number(date.slice(8, 10)),
       moodScore: isFiniteNumber(daily?.mood) ? daily.mood * 10 : null,
+      anxietyScore: daily?.anxiety ?? null,
       stabilityScore: stability,
       sleepScore: scoreSleepRing(daily?.sleepHours),
       sleepHours: daily?.sleepHours ?? null,
-      activityScore: isFiniteNumber(activityRaw) ? Math.min(100, activityRaw * 25) : null,
+      activityScore,
       hasDailyRecord: Boolean(daily),
+      isToday: date === today(),
+      isMissing: !hasAny,
       suddenLogCount,
       thoughtNoteCount,
       ifThenLogCount,
@@ -5949,7 +6019,35 @@ function scoreSleepRing(value: number | null | undefined) {
   if (value >= 7) return 100;
   if (value >= 6) return 85;
   if (value >= 5) return 65;
-  return 40;
+  if (value >= 4) return 45;
+  return 30;
+}
+
+function scoreActivityRing(date: string, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]) {
+  const record = dailyRecords.find((item) => item.date === date);
+  const hasExercise = Boolean(record?.exercise && record.exercise !== "なし");
+  const hasOuting = record?.wentOut === "あり";
+  const hasCare = selfCareLogs.some((log) => log.createdAt.slice(0, 10) === date);
+  const hasIfThen = ifThenLogs.some((log) => log.createdAt.slice(0, 10) === date);
+  const count = [hasOuting, hasExercise, hasCare, hasIfThen].filter(Boolean).length;
+  if (count >= 4) return 100;
+  if (count === 3) return 80;
+  if (count === 2) return 60;
+  if (count === 1) return 40;
+  return null;
+}
+
+function getRingMonthlySummary(days: DailyRingData[]): RingMonthlySummary {
+  return {
+    recordDays: days.filter((day) => day.hasDailyRecord).length,
+    averageStability: nullableAverage(days.map((day) => day.stabilityScore ?? day.moodScore)),
+    averageSleep: nullableAverage(days.map((day) => day.sleepHours)),
+    activityDays: days.filter((day) => isFiniteNumber(day.activityScore)).length,
+    suddenCount: days.reduce((sum, day) => sum + day.suddenLogCount, 0),
+    thoughtCount: days.reduce((sum, day) => sum + day.thoughtNoteCount, 0),
+    ifThenCount: days.reduce((sum, day) => sum + day.ifThenLogCount, 0),
+    selfCareCount: days.reduce((sum, day) => sum + day.selfCareLogCount, 0),
+  };
 }
 
 function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendPoint[] {
@@ -5967,6 +6065,22 @@ function buildMoodTrendPoints(records: DailyRecord[], range: TrendRange): TrendP
     };
   });
   return markActiveTrendPoint(points, range);
+}
+
+function buildMoodTrendPointsForMonth(month: string, records: DailyRecord[]): TrendPoint[] {
+  const byDate = new Map(records.map((record) => [record.date, record]));
+  const dates = monthDateList(month);
+  const points = dates.map((date) => {
+    const day = Number(date.slice(8, 10));
+    return {
+      date,
+      label: String(day),
+      value: byDate.get(date)?.mood ?? null,
+      isActive: false,
+      showLabel: shouldShowMonthlyDayLabel(day, dates.length, date),
+    };
+  });
+  return markActiveTrendPoint(points, "month");
 }
 
 function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]): TrendPoint[] {
