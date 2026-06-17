@@ -2085,8 +2085,15 @@ function Home({
           range={moodRange}
           monthView={monthChartView}
           ringDays={homeRingDays}
+          dailyRecords={dailyRecords}
+          suddenLogs={suddenLogs}
+          thoughtNotes={thoughtNotes}
+          ifThenPlans={ifThenPlans}
+          ifThenLogs={ifThenLogs}
+          selfCareLogs={selfCareLogs}
           privateDisplayMode={privateDisplayMode}
           onOpenRingDate={onCalendar}
+          onDaily={onDaily}
         />
         <button className="wide-cta" onClick={onDaily}>今日のふりかえりを記録する <span>›</span></button>
       </section>
@@ -2167,15 +2174,29 @@ function HomeTrendBars({
   range,
   monthView,
   ringDays,
+  dailyRecords,
+  suddenLogs,
+  thoughtNotes,
+  ifThenPlans,
+  ifThenLogs,
+  selfCareLogs,
   privateDisplayMode,
   onOpenRingDate,
+  onDaily,
 }: {
   points: TrendPoint[];
   range: TrendRange;
   monthView: MonthChartView;
   ringDays: DailyRingData[];
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  thoughtNotes: ThoughtNote[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
+  selfCareLogs: SelfCareLog[];
   privateDisplayMode: boolean;
   onOpenRingDate: () => void;
+  onDaily: () => void;
 }) {
   const defaultActiveDate = points.find((point) => point.isActive)?.date || points.find((point) => isFiniteNumber(point.value))?.date || points[0]?.date || "";
   const [selectedDate, setSelectedDate] = useState(defaultActiveDate);
@@ -2189,7 +2210,23 @@ function HomeTrendBars({
   if (range === "month" && monthView === "ring") {
     return (
       <>
-        <MonthlyRingView days={ringDays} privateDisplayMode={privateDisplayMode} compact />
+        <MonthlyRingView days={ringDays} privateDisplayMode={privateDisplayMode} compact selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+        {selectedDate && (
+          <SelectedDaySummaryCard
+            date={selectedDate}
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            thoughtNotes={thoughtNotes}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
+            selfCareLogs={selfCareLogs}
+            privateDisplayMode={privateDisplayMode}
+            focusMetric="mood"
+            compact
+            onOpenDailyRecord={onDaily}
+            onAddRecord={onDaily}
+          />
+        )}
         <button className="secondary-btn no-margin" onClick={onOpenRingDate} type="button">カレンダーで詳しく見る</button>
         <p className="tiny-note">未入力の日は0として扱わず、薄いリングで表示しています。参考表示です。</p>
       </>
@@ -2223,6 +2260,22 @@ function HomeTrendBars({
         })}
       </div>
       <TrendLegend metricType="mood" />
+      {selectedDate && (
+        <SelectedDaySummaryCard
+          date={selectedDate}
+          dailyRecords={dailyRecords}
+          suddenLogs={suddenLogs}
+          thoughtNotes={thoughtNotes}
+          ifThenPlans={ifThenPlans}
+          ifThenLogs={ifThenLogs}
+          selfCareLogs={selfCareLogs}
+          privateDisplayMode={privateDisplayMode}
+          focusMetric="mood"
+          compact
+          onOpenDailyRecord={onDaily}
+          onAddRecord={onDaily}
+        />
+      )}
       <p className="tiny-note">{range === "day" ? "今日の気分スコアを表示しています。" : "未入力の日は0として扱わず、薄い表示にしています。参考表示です。"}</p>
     </>
   );
@@ -2275,6 +2328,13 @@ function MetricDetailScreen({
   const weekRecords = dailyRecords.filter((record) => daysAgo(record.date) >= 0 && daysAgo(record.date) < 7);
   const monthRecords = dailyRecords.filter((record) => record.date.startsWith(today().slice(0, 7)));
   const points = buildMetricTrendPoints(metricType, range, dailyRecords, selfCareLogs, ifThenLogs);
+  const metricDefaultDate = getInitialSelectedDateFromPoints(points);
+  const [selectedMetricDate, setSelectedMetricDate] = useState(metricDefaultDate);
+  useEffect(() => {
+    if (!points.length) return;
+    if (points.some((point) => point.date === selectedMetricDate)) return;
+    setSelectedMetricDate(metricDefaultDate);
+  }, [metricDefaultDate, points, selectedMetricDate]);
   const max = metricType === "activity" ? Math.max(4, ...points.map((point) => point.value || 0)) : 10;
   const todayValue = formatMetricToday(metricType, todayRecord, selfCareLogs, ifThenLogs, privateDisplayMode);
   const weekAverage = formatMetricAverage(metricType, weekRecords, selfCareLogs, ifThenLogs, 7, privateDisplayMode);
@@ -2307,7 +2367,30 @@ function MetricDetailScreen({
           <h2>{content.trendTitle}</h2>
           <RangeSegment value={range} onChange={setRange} />
         </div>
-        <MetricTrendBars points={points} max={max} range={range} metricType={metricType} privateDisplayMode={privateDisplayMode} />
+        <MetricTrendBars
+          points={points}
+          max={max}
+          range={range}
+          metricType={metricType}
+          privateDisplayMode={privateDisplayMode}
+          selectedDate={selectedMetricDate}
+          onSelectDate={setSelectedMetricDate}
+        />
+        {selectedMetricDate && (
+          <SelectedDaySummaryCard
+            date={selectedMetricDate}
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            thoughtNotes={thoughtNotes}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
+            selfCareLogs={selfCareLogs}
+            privateDisplayMode={privateDisplayMode}
+            focusMetric={metricType}
+            onOpenDailyRecord={onDaily}
+            onAddRecord={onDaily}
+          />
+        )}
       </section>
 
       <section className="section-block data-card">
@@ -2354,29 +2437,136 @@ function RangeSegment({ value, onChange }: { value: TrendRange; onChange: (value
   );
 }
 
-function MetricTrendBars({ points, max, range, metricType, privateDisplayMode }: { points: TrendPoint[]; max: number; range: TrendRange; metricType: MetricType; privateDisplayMode: boolean }) {
+function MetricTrendBars({
+  points,
+  max,
+  range,
+  metricType,
+  privateDisplayMode,
+  selectedDate,
+  onSelectDate,
+}: {
+  points: TrendPoint[];
+  max: number;
+  range: TrendRange;
+  metricType: MetricType | "mood";
+  privateDisplayMode: boolean;
+  selectedDate?: string;
+  onSelectDate?: (date: string) => void;
+}) {
   const hasValue = points.some((point) => isFiniteNumber(point.value));
   return (
     <>
       {!hasValue && <p className="empty-box">この期間の記録はまだありません。記録が増えると見えやすくなります。</p>}
       <div className={`home-bars metric-bars range-${range} metric-bars-${metricType}`} aria-label="指標の推移">
-        {points.map((point, index) => (
-          <div className={point.value === null ? "home-bar-wrap empty" : "home-bar-wrap"} key={`${point.date}-${index}`}>
-            <div className={point.isActive ? "home-bar active" : "home-bar"} style={getMetricBarStyle(metricType, point.value, max, Boolean(point.isActive))} />
-            <small>{privateDisplayMode ? "" : (point.showLabel || range !== "month" ? point.label : "")}</small>
-          </div>
-        ))}
+        {points.map((point, index) => {
+          const isSelected = selectedDate ? point.date === selectedDate : Boolean(point.isActive);
+          const shouldShowLabel = privateDisplayMode ? false : isSelected || point.showLabel || range !== "month";
+          return (
+            <button
+              className={[point.value === null ? "home-bar-wrap empty" : "home-bar-wrap", isSelected ? "selected" : ""].filter(Boolean).join(" ")}
+              key={`${point.date}-${index}`}
+              onClick={() => onSelectDate?.(point.date)}
+              type="button"
+              aria-pressed={isSelected}
+              aria-label={`${point.label} ${point.value === null ? "記録なし" : `${point.value}`}`}
+            >
+              <div className={isSelected ? "home-bar active" : "home-bar"} style={getMetricBarStyle(metricType, point.value, max, isSelected)} />
+              <small>{shouldShowLabel ? point.label : ""}</small>
+            </button>
+          );
+        })}
       </div>
       <TrendLegend metricType={metricType} />
     </>
   );
 }
 
-function CalendarMonthBarView({ currentMonth, dailyRecords, privateDisplayMode }: { currentMonth: string; dailyRecords: DailyRecord[]; privateDisplayMode: boolean }) {
+function SelectedDaySummaryCard({
+  date,
+  dailyRecords,
+  suddenLogs,
+  thoughtNotes,
+  ifThenPlans,
+  ifThenLogs,
+  selfCareLogs,
+  privateDisplayMode,
+  focusMetric,
+  compact = false,
+  onOpenDailyRecord,
+  onAddRecord,
+}: {
+  date: string;
+  dailyRecords: DailyRecord[];
+  suddenLogs: SuddenLog[];
+  thoughtNotes: ThoughtNote[];
+  ifThenPlans: IfThenPlan[];
+  ifThenLogs: IfThenLog[];
+  selfCareLogs: SelfCareLog[];
+  privateDisplayMode: boolean;
+  focusMetric?: MetricType | "mood";
+  compact?: boolean;
+  onOpenDailyRecord?: () => void;
+  onAddRecord?: () => void;
+}) {
+  const daily = dailyRecords.find((record) => record.date === date);
+  const suddenCount = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === date).length;
+  const thoughtCount = thoughtNotes.filter((note) => note.date === date).length;
+  const ifThenCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === date).length;
+  const selfCareCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === date).length;
+  const activity = activityScoreForDate(date, dailyRecords, selfCareLogs, ifThenLogs);
+  const hasAny = Boolean(daily) || suddenCount > 0 || thoughtCount > 0 || ifThenCount > 0 || selfCareCount > 0;
+  const stability = hasAny ? calculateStabilityScore(date, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs).score : null;
+  const privateValue = (hasRecord: boolean) => hasRecord ? "記録あり" : "記録なし";
+  const rows = [
+    { key: "mood", label: "気分 / 安定度", value: daily ? `${formatScore(daily.mood)} / ${formatRingValue(stability, "%")}` : formatRingValue(stability, "%"), has: Boolean(daily || stability !== null) },
+    { key: "sleep", label: "睡眠", value: daily ? `${formatSleepHours(daily.sleepHours)} / ${daily.sleepQuality}` : "記録なし", has: Boolean(daily && (hasSleepHours(daily) || daily.sleepQuality)) },
+    { key: "anxiety", label: "不安感", value: daily ? formatScore(daily.anxiety) : "未入力", has: Boolean(daily && isFiniteNumber(daily.anxiety)) },
+    { key: "activity", label: "活動", value: isFiniteNumber(activity) ? `${activity}回` : "記録なし", has: isFiniteNumber(activity) },
+    { key: "sudden", label: "突発ログ", value: `${suddenCount}件`, has: suddenCount > 0 },
+    { key: "thought", label: "思考メモ", value: `${thoughtCount}件`, has: thoughtCount > 0 },
+    { key: "ifthen", label: "If-Then", value: `${ifThenCount}回`, has: ifThenCount > 0 },
+    { key: "care", label: "セルフケア", value: `${selfCareCount}回`, has: selfCareCount > 0 },
+  ];
+  const orderedRows = focusMetric === "sleep"
+    ? [rows[1], rows[0], rows[2], rows[4], rows[5], rows[6], rows[7]]
+    : focusMetric === "anxiety"
+      ? [rows[2], rows[4], rows[5], rows[0], rows[1], rows[6], rows[7]]
+      : focusMetric === "activity"
+        ? [rows[3], rows[6], rows[7], rows[0], rows[1], rows[2], rows[4], rows[5]]
+        : rows;
+  return (
+    <div className={compact ? "selected-day-card compact" : "selected-day-card"}>
+      <div className="selected-day-head">
+        <div>
+          <span className="label">この日の記録</span>
+          <strong>{formatJapaneseDate(date)}</strong>
+        </div>
+        <span className={hasAny ? "soft-pill" : "soft-pill muted"}>{hasAny ? "記録あり" : "記録なし"}</span>
+      </div>
+      {!hasAny && <p className="empty-box">この日はまだ記録がありません。</p>}
+      <div className="selected-day-grid">
+        {orderedRows.map((row) => (
+          <div className={`selected-day-item ${row.key}`} key={row.key}>
+            <span>{row.label}</span>
+            <strong>{privateDisplayMode ? privateValue(row.has) : row.value}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="data-actions">
+        <button className="secondary-btn no-margin" onClick={daily ? onOpenDailyRecord : onAddRecord} type="button">
+          {daily ? "この日の記録を見る" : "この日の記録を追加する"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CalendarMonthBarView({ currentMonth, dailyRecords, privateDisplayMode, selectedDate, onSelectDate }: { currentMonth: string; dailyRecords: DailyRecord[]; privateDisplayMode: boolean; selectedDate?: string; onSelectDate?: (date: string) => void }) {
   const points = buildMoodTrendPointsForMonth(currentMonth, dailyRecords);
   return (
     <div className="calendar-bar-view">
-      <MetricTrendBars points={points} max={10} range="month" metricType="mood" privateDisplayMode={privateDisplayMode} />
+      <MetricTrendBars points={points} max={10} range="month" metricType="mood" privateDisplayMode={privateDisplayMode} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       <p className="tiny-note">月内の日別の気分を表示しています。未入力の日は0として扱わず、薄い表示にしています。</p>
     </div>
   );
@@ -2388,6 +2578,8 @@ function MonthlyRingView({
   compact = false,
   onOpenDate,
   onEditDate,
+  selectedDate: controlledSelectedDate,
+  onSelectDate,
   actionLabel,
   editLabel = "この日の記録を編集・追加",
   summary,
@@ -2397,15 +2589,22 @@ function MonthlyRingView({
   compact?: boolean;
   onOpenDate?: (date: string) => void;
   onEditDate?: (date: string) => void;
+  selectedDate?: string;
+  onSelectDate?: (date: string) => void;
   actionLabel?: string;
   editLabel?: string;
   summary?: RingMonthlySummary;
 }) {
-  const [selectedDate, setSelectedDate] = useState(today());
+  const [internalSelectedDate, setInternalSelectedDate] = useState(today());
+  const selectedDate = controlledSelectedDate ?? internalSelectedDate;
+  const updateSelectedDate = (date: string) => {
+    onSelectDate?.(date);
+    if (!controlledSelectedDate) setInternalSelectedDate(date);
+  };
   useEffect(() => {
     if (!days.length) return;
     if (days.some((day) => day.date === selectedDate)) return;
-    setSelectedDate(days.find((day) => day.isToday)?.date || days.find(hasAnyRingData)?.date || days[0].date);
+    updateSelectedDate(days.find((day) => day.isToday)?.date || days.find(hasAnyRingData)?.date || days[0].date);
   }, [days, selectedDate]);
   const selected = days.find((day) => day.date === selectedDate) || days.find((day) => day.hasDailyRecord) || days[0];
   return (
@@ -2431,7 +2630,7 @@ function MonthlyRingView({
             <button
               className={["ring-day-cell", isToday ? "today" : "", isSelected ? "selected" : "", hasAny ? "has-data" : "empty"].filter(Boolean).join(" ")}
               key={day.date}
-              onClick={() => setSelectedDate(day.date)}
+              onClick={() => updateSelectedDate(day.date)}
               type="button"
               aria-label={`${formatJapaneseDate(day.date)} のリング`}
             >
@@ -3134,12 +3333,14 @@ function CalendarScreen({
             </div>
           </>
         ) : calendarView === "bar" ? (
-          <CalendarMonthBarView currentMonth={currentMonth} dailyRecords={dailyRecords} privateDisplayMode={privateDisplayMode} />
+          <CalendarMonthBarView currentMonth={currentMonth} dailyRecords={dailyRecords} privateDisplayMode={privateDisplayMode} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
         ) : (
           <MonthlyRingView
             days={ringDays}
             privateDisplayMode={privateDisplayMode}
             summary={ringSummary}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
             onOpenDate={(date) => {
               setSelectedDate(date);
               setCalendarView("calendar");
@@ -6166,6 +6367,14 @@ function markActiveTrendPoint(points: TrendPoint[], range: TrendRange) {
     isActive: point.date === activeDate,
     showLabel: point.showLabel || (range === "month" && point.date === activeDate),
   }));
+}
+
+function getInitialSelectedDateFromPoints(points: TrendPoint[]) {
+  return points.find((point) => point.date === today() && isFiniteNumber(point.value))?.date
+    || [...points].reverse().find((point) => isFiniteNumber(point.value))?.date
+    || points.find((point) => point.date === today())?.date
+    || points[0]?.date
+    || "";
 }
 
 function activityScoreForDate(date: string, dailyRecords: DailyRecord[], selfCareLogs: SelfCareLog[], ifThenLogs: IfThenLog[]) {

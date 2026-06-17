@@ -998,6 +998,86 @@ h3 {
   min-width: 0;
 }
 
+.selected-day-card {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 4px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 14%, var(--color-border));
+  border-radius: 22px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary-soft) 48%, var(--color-surface)), var(--color-surface) 78%);
+  box-shadow: var(--shadow-subtle);
+  min-width: 0;
+}
+
+.selected-day-card.compact {
+  padding: 10px;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.selected-day-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.selected-day-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.selected-day-head strong {
+  color: var(--color-heading);
+  font-size: clamp(0.95rem, 3vw, 1.08rem);
+}
+
+.selected-day-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.selected-day-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.selected-day-item span {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.selected-day-item strong {
+  min-width: 0;
+  color: var(--color-heading);
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.selected-day-item.sleep { background: color-mix(in srgb, #e7f1fa 70%, white); }
+.selected-day-item.anxiety,
+.selected-day-item.thought,
+.selected-day-item.sudden { background: color-mix(in srgb, #efe9f8 70%, white); }
+.selected-day-item.activity,
+.selected-day-item.ifthen,
+.selected-day-item.care { background: color-mix(in srgb, #e7f6ef 70%, white); }
+
+@media (max-width: 374px) {
+  .selected-day-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .metric-bars {
   height: 190px;
 }
