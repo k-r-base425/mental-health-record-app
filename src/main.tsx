@@ -212,6 +212,27 @@ type StabilityScore = {
   waveText: string;
 };
 
+type MonthlyReflection = {
+  summary: string;
+  sections: {
+    overall: string;
+    sleep: string;
+    anxiety: string;
+    activity: string;
+    suddenLogs: string;
+    thoughtNotes: string;
+    selfCare: string;
+    ifThen: string;
+    nextHint: string;
+  };
+  hasEnoughData: boolean;
+  topTrigger: string;
+  topStateTag: string;
+  topThoughtTag: string;
+  topSelfCare: string;
+  topIfThen: string;
+};
+
 type Screen = "home" | "recordHub" | "daily" | "sudden" | "records" | "review" | "analysis" | "report" | "calendar" | "data" | "selfcare" | "consultation" | "privacy" | "menu" | "about" | "habit" | "display" | "thought" | "ifthen" | "metricDetail";
 type MetricType = "sleep" | "anxiety" | "activity";
 type ChartMetricType = MetricType | "mood" | "stability";
@@ -1460,6 +1481,8 @@ function App() {
             onEditDaily={openDailyForDate}
             onAddDaily={openDailyForDate}
             onAddSudden={openSuddenForDate}
+            onIfThen={openIfThen}
+            onSelfCare={() => moveToScreen("selfcare")}
           />
         )}
         {screen === "selfcare" && (
@@ -3223,6 +3246,8 @@ function CalendarScreen({
   onEditDaily,
   onAddDaily,
   onAddSudden,
+  onIfThen,
+  onSelfCare,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -3235,10 +3260,13 @@ function CalendarScreen({
   onEditDaily: (date: string) => void;
   onAddDaily: (date: string) => void;
   onAddSudden: (date: string) => void;
+  onIfThen: (prefill?: IfThenPrefill) => void;
+  onSelfCare: () => void;
 }) {
   const [currentMonth, setCurrentMonth] = useState(today().slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today());
   const [calendarView, setCalendarView] = useState<CalendarView>("ring");
+  const [showReflectionDetail, setShowReflectionDetail] = useState(false);
   const monthDays = buildCalendarDays(currentMonth);
   const summary = getMonthlySummary(currentMonth, dailyRecords, suddenLogs, selfCareLogs);
   const ringDays = useMemo(
@@ -3246,6 +3274,10 @@ function CalendarScreen({
     [currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs],
   );
   const ringSummary = useMemo(() => getRingMonthlySummary(ringDays), [ringDays]);
+  const monthlyReflection = useMemo(
+    () => generateMonthlyReflection(currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, consultationNotes),
+    [currentMonth, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, consultationNotes],
+  );
   const selectedDaily = dailyRecords.find((record) => record.date === selectedDate);
   const selectedSudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === selectedDate).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   const selectedCare = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === selectedDate).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -3359,9 +3391,40 @@ function CalendarScreen({
         <span className="monthly-icon">☘</span>
         <div>
           <h2>今月のふりかえり</h2>
-          <p>この月の記録上の傾向です。平均スコアや睡眠、セルフケアの記録を参考情報として見られます。</p>
+          <p>{privateDisplayMode ? "記録上の傾向があります。詳細は非表示です。" : monthlyReflection.summary}</p>
+          <div className="reflection-actions">
+            <button className="text-link-button" type="button" onClick={() => setShowReflectionDetail((value) => !value)}>
+              {showReflectionDetail ? "閉じる" : "詳しく見る"}
+            </button>
+            {monthlyReflection.topTrigger !== "記録なし" && (
+              <button
+                className="text-link-button"
+                type="button"
+                onClick={() => onIfThen({ title: `${monthlyReflection.topTrigger}に合わせる小さな行動`, ifText: `${monthlyReflection.topTrigger}がきっかけになりそうなとき`, category: "記録する", memo: "月間ふりかえりから作成" })}
+              >
+                If-Thenプランを作る
+              </button>
+            )}
+            {(monthlyReflection.topSelfCare !== "記録なし" || monthlyReflection.topIfThen !== "記録なし") && (
+              <button className="text-link-button" type="button" onClick={onSelfCare}>整いやすかった行動を見る</button>
+            )}
+          </div>
         </div>
       </section>
+      {showReflectionDetail && !privateDisplayMode && (
+        <section className="section-block reflection-detail-card">
+          <h2>記録から見える今月の傾向</h2>
+          <p className="tiny-note">記録上の傾向をもとにした参考コメントです。診断や治療判断ではありません。</p>
+          <div className="reflection-section-list">
+            {monthlyReflectionEntries(monthlyReflection).map(([label, text]) => (
+              <article key={label} className="reflection-section-item">
+                <h3>{label}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="section-block calendar-summary-card">
         <h2>月間サマリー</h2>
@@ -5498,6 +5561,8 @@ function Report({
   const todayStability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const stabilitySummary = summarizeStabilityPeriod(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const monthlySummaryText = buildMonthlySummaryText(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs);
+  const monthlyReflection = generateMonthlyReflection(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, consultationNotes);
+  const monthlyReflectionText = monthlyReflectionToText(today().slice(0, 7), monthlyReflection);
   const insightSummary = reportInsights.length
     ? reportInsights.slice(0, 5).map((insight) => `- ${insight.title}: ${insight.description} ${insight.note}`).join("\n")
     : "記録が少ないため、傾向は参考程度です。もう少し記録が増えると、睡眠・天気・外出・きっかけ・セルフケアとの関係が見えやすくなります。";
@@ -5579,6 +5644,8 @@ ${insightSummary}
 
 ${monthlySummaryText}
 
+${monthlyReflectionText}
+
 相談時に伝えたいこと: ${doctorMemo || "未記入"}`;
 
   const prompt = `以下はメンタルヘルスのセルフ記録です。診断や治療判断、服薬指示はしないでください。
@@ -5614,6 +5681,11 @@ ${summary}`;
         <h2>相談ノート</h2>
         <p className="soft-text">未相談のメモ {pendingNotes.length}件 / 相談済みのメモ {doneNotes.length}件。診察前まとめは相談ノート画面で作れます。</p>
         <button className="secondary-btn no-margin" onClick={onOpenConsultation}>診察前まとめを開く</button>
+      </section>
+      <section className="section-block reflection-detail-card">
+        <h2>月間ふりかえりコメント</h2>
+        <p className="soft-text">{monthlyReflection.summary}</p>
+        <p className="tiny-note">記録上の傾向をもとにした参考コメントです。診断や治療判断ではありません。</p>
       </section>
       <ReportBox title="医師に見せる用の文章" text={summary} />
       <ReportBox title="AI相談用プロンプト" text={prompt} />
@@ -6552,6 +6624,157 @@ function buildMonthlySummaryText(month: string, dailyRecords: DailyRecord[], sud
 この内容は記録上の傾向です。原因を断定するものではありません。`;
 }
 
+function generateMonthlyReflection(
+  month: string,
+  dailyRecords: DailyRecord[],
+  suddenLogs: SuddenLog[],
+  selfCareLogs: SelfCareLog[],
+  thoughtNotes: ThoughtNote[],
+  ifThenPlans: IfThenPlan[],
+  ifThenLogs: IfThenLog[],
+  consultationNotes: ConsultationNote[],
+): MonthlyReflection {
+  const daily = dailyRecords.filter((record) => record.date.startsWith(month));
+  const sudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 7) === month);
+  const care = selfCareLogs.filter((log) => log.createdAt.slice(0, 7) === month);
+  const thoughts = thoughtNotes.filter((note) => note.date.startsWith(month));
+  const ifThen = ifThenLogs.filter((log) => log.createdAt.slice(0, 7) === month);
+  const notes = consultationNotes.filter((note) => note.createdAt.slice(0, 7) === month || note.updatedAt.slice(0, 7) === month);
+  const dailyCount = new Set(daily.map((record) => record.date)).size;
+  const enoughDaily = dailyCount >= 3;
+  const enoughSudden = sudden.length >= 3;
+  const enoughCare = care.length >= 3;
+  const enoughIfThen = ifThen.length >= 3;
+  const hasEnoughData = enoughDaily || enoughSudden || enoughCare || enoughIfThen || thoughts.length >= 3;
+  const topTrigger = firstKey(countFlat(sudden.flatMap((log) => log.triggers)));
+  const topStateTag = firstKey(countFlat(sudden.flatMap((log) => log.stateTags)));
+  const topThoughtTag = firstKey(countFlat([...thoughts.flatMap((note) => note.thoughtTags), ...daily.flatMap((record) => record.thoughtTags || [])]));
+  const topSelfCare = firstKey(countBy(care, (log) => log.title));
+  const topIfThen = firstKey(countBy(ifThen, (log) => log.planTitle));
+  const averageMood = nullableAverage(daily.map((record) => record.mood).filter(isFiniteNumber));
+  const averageAnxiety = nullableAverage(daily.map((record) => record.anxiety).filter(isFiniteNumber));
+  const averageFatigue = nullableAverage(daily.map((record) => record.fatigue).filter(isFiniteNumber));
+  const averageSleep = nullableAverage(validSleepHours(daily));
+  const stabilityScores = daily
+    .map((record) => calculateStabilityScore(record.date, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs).score)
+    .filter(isFiniteNumber);
+  const averageStability = nullableAverage(stabilityScores);
+  const shortSleepRecords = daily.filter((record) => hasSleepHours(record) && Number(record.sleepHours) < 6);
+  const shortSleepAnxiety = nullableAverage(shortSleepRecords.map((record) => record.anxiety).filter(isFiniteNumber));
+  const activeDays = daily.filter((record) => record.exercise !== "なし" || record.outing === "あり").length;
+  const settledCare = firstKey(countBy(care.filter((log) => log.result === "少し整った"), (log) => log.title));
+  const ifThenFit = nullableAverage(ifThen.map((log) => log.fitScore).filter(isFiniteNumber));
+  const ifThenEase = nullableAverage(ifThen.map((log) => log.easeScore).filter(isFiniteNumber));
+  const thoughtIntensity = nullableAverage(thoughts.map((note) => note.intensity).filter(isFiniteNumber));
+
+  if (!hasEnoughData) {
+    const gentle = "この月の記録はまだ少なめです。もう少し記録が増えると、状態の波や整いやすい行動が見えやすくなります。";
+    return {
+      summary: gentle,
+      hasEnoughData,
+      topTrigger,
+      topStateTag,
+      topThoughtTag,
+      topSelfCare,
+      topIfThen,
+      sections: {
+        overall: gentle,
+        sleep: averageSleep === null ? "睡眠の記録が増えると、休息との関係を見返しやすくなります。" : `睡眠は記録がある日の平均で${averageSleep.toFixed(1)}時間です。参考情報として見てください。`,
+        anxiety: averageAnxiety === null ? "不安感の記録はまだ少なめです。" : `不安感は記録がある日の平均で${averageAnxiety.toFixed(1)}/10です。原因を断定するものではありません。`,
+        activity: care.length || ifThen.length ? "セルフケアやIf-Thenの記録が少しあります。続けやすさを見る材料にできます。" : "活動やセルフケアの記録が増えると、整いやすい行動が見えやすくなります。",
+        suddenLogs: sudden.length ? `突発ログは${sudden.length}件あります。内容は相談時の材料として使えます。` : "突発ログはまだ少なめです。",
+        thoughtNotes: thoughts.length ? `思考メモは${thoughts.length}件あります。考え方のくせに気づく参考になります。` : "思考メモはまだ少なめです。",
+        selfCare: care.length ? `セルフケア実行ログは${care.length}件あります。合いやすい行動を見る材料になります。` : "セルフケア実行ログはまだ少なめです。",
+        ifThen: ifThen.length ? `If-Then実行ログは${ifThen.length}件あります。整いやすさと実行しやすさを見返せます。` : "If-Then実行ログはまだ少なめです。",
+        nextHint: "来月は、入力できる日だけ短く残す形でも十分です。",
+      },
+    };
+  }
+
+  const overall = averageStability !== null
+    ? `今月は、記録がある日の安定度が平均${Math.round(averageStability)}%として残っています。記録上の参考情報です。`
+    : averageMood !== null
+      ? `今月は、気分スコアが平均${averageMood.toFixed(1)}/10として残っています。状態の波を見返す材料にできます。`
+      : `今月は${dailyCount}日分の記録があります。状態の波を見返す材料として使えます。`;
+  const waveText = averageAnxiety !== null || averageFatigue !== null
+    ? `一部の日では、不安感${averageAnxiety !== null ? `平均${averageAnxiety.toFixed(1)}/10` : ""}${averageAnxiety !== null && averageFatigue !== null ? "、" : ""}${averageFatigue !== null ? `疲労度平均${averageFatigue.toFixed(1)}/10` : ""}が記録されています。日ごとの違いを見る材料になります。`
+    : "状態の波は、記録が増えるともう少し見えやすくなります。";
+  const sleep = averageSleep === null
+    ? "睡眠時間は未入力の日が多いため、平均にはしていません。"
+    : shortSleepRecords.length
+      ? `睡眠時間は記録がある日の平均で${averageSleep.toFixed(1)}時間です。6時間未満の日が${shortSleepRecords.length}日あり、その日は不安感や疲労度が高めに残っている可能性があります${shortSleepAnxiety !== null ? `（不安感平均${shortSleepAnxiety.toFixed(1)}/10）` : ""}。`
+      : `睡眠時間は記録がある日の平均で${averageSleep.toFixed(1)}時間です。睡眠が比較的安定している日は、状態を見返す材料になりそうです。`;
+  const anxiety = topTrigger !== "記録なし" || topStateTag !== "記録なし"
+    ? `状態の波が大きい日は、${topTrigger !== "記録なし" ? `きっかけとして「${topTrigger}」` : ""}${topTrigger !== "記録なし" && topStateTag !== "記録なし" ? "、" : ""}${topStateTag !== "記録なし" ? `状態タグとして「${topStateTag}」` : ""}が記録されています。原因を断定するものではありません。`
+    : waveText;
+  const activity = activeDays || care.length || ifThen.length
+    ? `外出や運動が記録された日は${activeDays}日、セルフケアは${care.length}回、If-Thenは${ifThen.length}回あります。行動と状態の関係を見返す参考になります。`
+    : "活動やセルフケアの記録はまだ少なめです。無理に増やすためではなく、ふり返り用の参考情報です。";
+  const suddenText = sudden.length
+    ? `突発ログは${sudden.length}件あります。よく出たきっかけは「${topTrigger}」、状態タグは「${topStateTag}」です。相談時の材料にできます。`
+    : "突発ログはこの月には多くありません。記録がある場合だけ、状態の波を見返す材料にできます。";
+  const thoughtText = thoughts.length
+    ? `思考メモは${thoughts.length}件あります。よく出た思考タグは「${topThoughtTag}」です${thoughtIntensity !== null ? `。感情の強さは平均${thoughtIntensity.toFixed(1)}/10として残っています` : ""}。責めるためではなく、気づくための参考情報です。`
+    : "思考メモはまだ少なめです。考えが頭の中で回る日は、一度メモに置いておけます。";
+  const careText = care.length
+    ? `セルフケアは${care.length}回記録されています。${settledCare !== "記録なし" ? `「${settledCare}」は整いやすい可能性がある行動として残っています。` : `よく使った行動は「${topSelfCare}」です。`}`
+    : "セルフケア実行ログはまだ少なめです。小さな一手を試した日だけ残す形でも大丈夫です。";
+  const ifThenText = ifThen.length
+    ? `If-Thenプランは${ifThen.length}回実行されています。よく実行したプランは「${topIfThen}」です${ifThenFit !== null ? `。整いやすさ平均は${ifThenFit.toFixed(1)}/10` : ""}${ifThenEase !== null ? `、実行しやすさ平均は${ifThenEase.toFixed(1)}/10` : ""}として残っています。`
+    : "If-Then実行ログはまだ少なめです。きっかけが見えたときに、小さな行動を1つ決める材料にできます。";
+  const nextHint = topTrigger !== "記録なし"
+    ? `来月は、「${topTrigger}」が出たとき用の小さなIf-Thenプランを1つ作ってみると、ふり返りやすくなりそうです。`
+    : topSelfCare !== "記録なし"
+      ? `来月は、「${topSelfCare}」のように続けやすかった行動を1つだけ残しておくと、整いやすさを見返しやすくなりそうです。`
+      : "来月は、整いやすかった行動を1つだけ続けてみると、ふり返りやすくなりそうです。";
+  const noteText = notes.length ? `相談ノートも${notes.length}件更新されています。相談時に確認したいことを整理する材料にできます。` : "";
+  const summary = [overall, sleep, ifThen.length || care.length ? "セルフケアやIf-Thenの記録も、整いやすい行動を見返す材料になりそうです。" : ""].filter(Boolean).join(" ");
+
+  return {
+    summary,
+    hasEnoughData,
+    topTrigger,
+    topStateTag,
+    topThoughtTag,
+    topSelfCare,
+    topIfThen,
+    sections: {
+      overall: [overall, noteText].filter(Boolean).join(" "),
+      sleep,
+      anxiety,
+      activity,
+      suddenLogs: suddenText,
+      thoughtNotes: thoughtText,
+      selfCare: careText,
+      ifThen: ifThenText,
+      nextHint,
+    },
+  };
+}
+
+function monthlyReflectionEntries(reflection: MonthlyReflection): Array<[string, string]> {
+  return [
+    ["全体", reflection.sections.overall],
+    ["睡眠", reflection.sections.sleep],
+    ["不安感・状態の波", reflection.sections.anxiety],
+    ["活動", reflection.sections.activity],
+    ["突発ログ", reflection.sections.suddenLogs],
+    ["思考メモ", reflection.sections.thoughtNotes],
+    ["セルフケア", reflection.sections.selfCare],
+    ["If-Then", reflection.sections.ifThen],
+    ["来月の小さなヒント", reflection.sections.nextHint],
+  ];
+}
+
+function monthlyReflectionToText(month: string, reflection: MonthlyReflection) {
+  return `月間ふり返りコメント（${formatMonthLabel(month)}）
+${reflection.summary}
+
+${monthlyReflectionEntries(reflection).map(([label, text]) => `${label}: ${text}`).join("\n")}
+
+この内容は記録上の傾向です。診断や治療判断ではありません。`;
+}
+
 function getHabitSummary(records: DailyRecord[]) {
   const uniqueDates = [...new Set(records.map((record) => record.date))];
   const currentMonth = today().slice(0, 7);
@@ -7254,6 +7477,7 @@ function buildConsultationSummary(period: number, dailyRecords: DailyRecord[], s
     : "記録が少ないため、傾向は参考程度です。もう少し記録が増えると、状態の波が見えやすくなります。";
   const todayStability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const stabilitySummary = summarizeStabilityPeriod(period, dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
+  const monthlyReflection = generateMonthlyReflection(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs, notes);
 
   return `以下は、過去${period}日間のセルフ記録をもとにした相談用メモです。診断や治療判断ではなく、相談時に状態を伝えるための参考情報として作成しています。
 
@@ -7285,6 +7509,9 @@ ${activeIfThen}
 
 記録から見える傾向:
 ${insightLines}
+
+月間ふり返りコメント:
+${monthlyReflectionToText(today().slice(0, 7), monthlyReflection)}
 
 保存した相談メモ:
 ${noteLines}

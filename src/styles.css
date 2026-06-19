@@ -1562,6 +1562,59 @@ h3 {
   line-height: 1.6;
 }
 
+.reflection-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.text-link-button {
+  min-height: 38px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 22%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary-soft) 78%, white);
+  color: var(--color-primary-strong);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.reflection-detail-card {
+  display: grid;
+  gap: 14px;
+  background: linear-gradient(145deg, var(--color-surface), color-mix(in srgb, var(--color-primary-soft) 42%, white));
+}
+
+.reflection-section-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reflection-section-item {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.reflection-section-item h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.92rem;
+}
+
+.reflection-section-item p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
 .calendar-summary-card {
   padding: 20px;
 }
