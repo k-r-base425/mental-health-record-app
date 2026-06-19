@@ -186,6 +186,14 @@ type DisplaySettings = {
   updatedAt: string;
 };
 
+type DemoDisplayMode = "all" | "realOnly" | "sampleOnly";
+
+type DemoDisplaySettings = {
+  mode: DemoDisplayMode;
+  isDemoModeEnabled: boolean;
+  updatedAt: string;
+};
+
 type Insight = {
   id: string;
   title: string;
@@ -288,6 +296,7 @@ type BackupData = {
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
   displaySettings: DisplaySettings;
+  demoDisplaySettings: DemoDisplaySettings;
 };
 
 type DraftEnvelope<T> = {
@@ -316,6 +325,7 @@ const selfCareDraftKey = "selfCareDraft";
 const habitSettingsStorageKey = "habitSettings";
 const reminderDismissalsStorageKey = "reminderDismissals";
 const displaySettingsStorageKey = "displaySettings";
+const demoDisplaySettingsStorageKey = "demoDisplaySettings";
 const appVersion = "1.0.0";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -804,6 +814,60 @@ function loadDisplaySettings() {
   }
 }
 
+function defaultDemoDisplaySettings(): DemoDisplaySettings {
+  return { mode: "all", isDemoModeEnabled: false, updatedAt: nowIso() };
+}
+
+function normalizeDemoDisplaySettings(settings?: Partial<DemoDisplaySettings>): DemoDisplaySettings {
+  const mode = settings?.mode === "realOnly" || settings?.mode === "sampleOnly" || settings?.mode === "all" ? settings.mode : "all";
+  return {
+    mode,
+    isDemoModeEnabled: Boolean(settings?.isDemoModeEnabled),
+    updatedAt: settings?.updatedAt || nowIso(),
+  };
+}
+
+function loadDemoDisplaySettings() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(demoDisplaySettingsStorageKey) || "{}") as Partial<DemoDisplaySettings>;
+    const settings = normalizeDemoDisplaySettings(parsed);
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  } catch {
+    const settings = defaultDemoDisplaySettings();
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(settings));
+    return settings;
+  }
+}
+
+function applyDemoDisplayMode<T>(items: T[], settings: DemoDisplaySettings) {
+  if (settings.mode === "realOnly") return items.filter((item) => !isSampleItem(item));
+  if (settings.mode === "sampleOnly") return items.filter(isSampleItem);
+  return items;
+}
+
+function demoDisplayLabel(settings: DemoDisplaySettings) {
+  if (settings.mode === "sampleOnly") return "サンプルのみ表示";
+  if (settings.mode === "realOnly") return "実データのみ表示";
+  return settings.isDemoModeEnabled ? "デモ表示中" : "";
+}
+
+function demoModeLabel(mode: DemoDisplayMode) {
+  if (mode === "realOnly") return "実データのみ";
+  if (mode === "sampleOnly") return "サンプルのみ";
+  return "すべて表示";
+}
+
+function demoModeFromLabel(label: string): DemoDisplayMode {
+  if (label === "実データのみ") return "realOnly";
+  if (label === "サンプルのみ") return "sampleOnly";
+  return "all";
+}
+
+function countSampleItems(groups: unknown[][]) {
+  return groups.reduce((sum, group) => sum + group.filter(isSampleItem).length, 0);
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
@@ -818,6 +882,7 @@ function App() {
   const [habitSettings, setHabitSettings] = useState<HabitSettings>(loadHabitSettings);
   const [reminderDismissals, setReminderDismissals] = useState<ReminderDismissal[]>(loadReminderDismissals);
   const [displaySettings, setDisplaySettings] = useState<DisplaySettings>(loadDisplaySettings);
+  const [demoDisplaySettings, setDemoDisplaySettings] = useState<DemoDisplaySettings>(loadDemoDisplaySettings);
   const [isLocked, setIsLocked] = useState(() => loadPrivacySettings().isLockEnabled);
   const [editingDaily, setEditingDaily] = useState<DailyRecord | null>(null);
   const [editingSudden, setEditingSudden] = useState<SuddenLog | null>(null);
@@ -846,6 +911,15 @@ function App() {
     ...consultationNotes,
     ...thoughtNotes,
   ].some(isSampleItem) || isSampleItem(habitSettings);
+  const visibleDailyRecords = useMemo(() => applyDemoDisplayMode(dailyRecords, demoDisplaySettings), [dailyRecords, demoDisplaySettings]);
+  const visibleSuddenLogs = useMemo(() => applyDemoDisplayMode(suddenLogs, demoDisplaySettings), [suddenLogs, demoDisplaySettings]);
+  const visibleSelfCarePlans = useMemo(() => applyDemoDisplayMode(selfCarePlans, demoDisplaySettings), [selfCarePlans, demoDisplaySettings]);
+  const visibleSelfCareLogs = useMemo(() => applyDemoDisplayMode(selfCareLogs, demoDisplaySettings), [selfCareLogs, demoDisplaySettings]);
+  const visibleIfThenPlans = useMemo(() => applyDemoDisplayMode(ifThenPlans, demoDisplaySettings), [ifThenPlans, demoDisplaySettings]);
+  const visibleIfThenLogs = useMemo(() => applyDemoDisplayMode(ifThenLogs, demoDisplaySettings), [ifThenLogs, demoDisplaySettings]);
+  const visibleConsultationNotes = useMemo(() => applyDemoDisplayMode(consultationNotes, demoDisplaySettings), [consultationNotes, demoDisplaySettings]);
+  const visibleThoughtNotes = useMemo(() => applyDemoDisplayMode(thoughtNotes, demoDisplaySettings), [thoughtNotes, demoDisplaySettings]);
+  const demoLabel = demoDisplayLabel(demoDisplaySettings);
 
   useEffect(() => {
     if (!privacySettings.isLockEnabled || privacySettings.autoLockMinutes === 0 || isLocked) return;
@@ -869,6 +943,15 @@ function App() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [privacySettings.isLockEnabled]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") !== "1") return;
+    const next = normalizeDemoDisplaySettings({ mode: hasSampleData ? "sampleOnly" : "all", isDemoModeEnabled: true, updatedAt: nowIso() });
+    setDemoDisplaySettings(next);
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(next));
+    setFlash(hasSampleData ? "デモ表示に切り替えました" : "デモモードをONにしました。サンプルデータを追加すると見え方を確認できます。");
+  }, [hasSampleData]);
+
   const savePrivacySettings = (settings: PrivacySettings) => {
     setPrivacySettings(settings);
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(settings));
@@ -890,6 +973,13 @@ function App() {
     setDisplaySettings(next);
     localStorage.setItem(displaySettingsStorageKey, JSON.stringify(next));
     setFlash("表示設定を更新しました");
+  };
+
+  const updateDemoDisplaySettings = (settings: DemoDisplaySettings) => {
+    const next = normalizeDemoDisplaySettings({ ...settings, updatedAt: nowIso() });
+    setDemoDisplaySettings(next);
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(next));
+    setFlash("デモ表示設定を更新しました");
   };
 
   const dismissReminderToday = () => {
@@ -1074,6 +1164,7 @@ function App() {
     setHabitSettings(normalizeHabitSettings(backup.habitSettings));
     setReminderDismissals(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[]);
     setDisplaySettings(normalizeDisplaySettings(backup.displaySettings));
+    setDemoDisplaySettings(normalizeDemoDisplaySettings(backup.demoDisplaySettings));
     const nextPrivacy = normalizeImportedPrivacySettings(backup.privacySettings, privacySettings);
     setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify(backup.dailyRecords));
@@ -1088,6 +1179,7 @@ function App() {
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(normalizeHabitSettings(backup.habitSettings)));
     localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(backup.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean)));
     localStorage.setItem(displaySettingsStorageKey, JSON.stringify(normalizeDisplaySettings(backup.displaySettings)));
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(normalizeDemoDisplaySettings(backup.demoDisplaySettings)));
     setPendingImport(null);
     setDetailItem(null);
     setFlash("バックアップを読み込みました");
@@ -1103,6 +1195,7 @@ function App() {
     setIfThenLogs([]);
     setConsultationNotes([]);
     setThoughtNotes([]);
+    setDemoDisplaySettings(defaultDemoDisplaySettings());
     const nextPrivacy = { ...privacySettings, privateDisplayMode: false, updatedAt: nowIso() };
     setPrivacySettings(nextPrivacy);
     localStorage.setItem(dailyStorageKey, JSON.stringify([]));
@@ -1113,6 +1206,7 @@ function App() {
     localStorage.setItem(ifThenLogsStorageKey, JSON.stringify([]));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify([]));
     localStorage.setItem(thoughtNotesStorageKey, JSON.stringify([]));
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(defaultDemoDisplaySettings()));
     localStorage.setItem(privacySettingsStorageKey, JSON.stringify(nextPrivacy));
     setPendingDelete(null);
     setDetailItem(null);
@@ -1122,7 +1216,7 @@ function App() {
 
   const addSampleData = () => {
     const confirmed = window.confirm(hasSampleData
-      ? "既存のサンプルデータを入れ替えて、1ヶ月分の架空サンプルデータを追加します。手入力した記録は削除されません。続行しますか？"
+      ? "すでにサンプルデータがあります。既存のサンプルだけを入れ替えますか？手入力した記録は削除されません。"
       : "1ヶ月分の架空サンプルデータを追加します。現在の記録は削除されませんが、データが増えます。続行しますか？");
     if (!confirmed) return;
 
@@ -1156,6 +1250,9 @@ function App() {
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(nextConsultation));
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(nextHabit));
     setFlash("1ヶ月分のサンプルデータを追加しました");
+    const nextDemo = normalizeDemoDisplaySettings({ mode: "sampleOnly", isDemoModeEnabled: true, updatedAt: nowIso() });
+    setDemoDisplaySettings(nextDemo);
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(nextDemo));
     setScreen("data");
   };
 
@@ -1191,6 +1288,9 @@ function App() {
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(nextHabit));
     setDetailItem(null);
     setFlash("サンプルデータを削除しました");
+    const nextDemo = normalizeDemoDisplaySettings({ mode: "realOnly", isDemoModeEnabled: false, updatedAt: nowIso() });
+    setDemoDisplaySettings(nextDemo);
+    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(nextDemo));
     setScreen("data");
   };
 
@@ -1366,6 +1466,7 @@ function App() {
   return (
     <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
       <main className="screen">
+        {demoLabel && <div className="demo-mode-chip">{demoLabel}</div>}
         {backTargetForScreen(screen) && (
           <button className="back-link" onClick={() => moveToScreen(backTargetForScreen(screen)!)} type="button">
             ← 戻る
@@ -1373,14 +1474,14 @@ function App() {
         )}
         {screen === "home" && (
           <Home
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
-            selfCarePlans={selfCarePlans}
-            selfCareLogs={selfCareLogs}
-            ifThenPlans={ifThenPlans}
-            ifThenLogs={ifThenLogs}
-            consultationNotes={consultationNotes}
-            thoughtNotes={thoughtNotes}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
+            selfCarePlans={visibleSelfCarePlans}
+            selfCareLogs={visibleSelfCareLogs}
+            ifThenPlans={visibleIfThenPlans}
+            ifThenLogs={visibleIfThenLogs}
+            consultationNotes={visibleConsultationNotes}
+            thoughtNotes={visibleThoughtNotes}
             privateDisplayMode={privacySettings.privateDisplayMode}
             habitSettings={habitSettings}
             reminderDismissals={reminderDismissals}
@@ -1403,12 +1504,12 @@ function App() {
         {screen === "metricDetail" && (
           <MetricDetailScreen
             metricType={selectedMetric}
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
-            selfCareLogs={selfCareLogs}
-            ifThenPlans={ifThenPlans}
-            ifThenLogs={ifThenLogs}
-            thoughtNotes={thoughtNotes}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
+            selfCareLogs={visibleSelfCareLogs}
+            ifThenPlans={visibleIfThenPlans}
+            ifThenLogs={visibleIfThenLogs}
+            thoughtNotes={visibleThoughtNotes}
             privateDisplayMode={privacySettings.privateDisplayMode}
             onDaily={openDaily}
             onRecords={openRecords}
@@ -1416,8 +1517,8 @@ function App() {
         )}
         {screen === "recordHub" && (
           <RecordHub
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
             onDaily={openDaily}
             onSudden={openSudden}
             onRecords={openRecords}
@@ -1429,8 +1530,8 @@ function App() {
         {screen === "sudden" && <SuddenForm key={editingSudden?.id || newSuddenDate || "new-sudden"} initial={editingSudden} initialDate={newSuddenDate} onSave={saveSudden} onCancel={() => moveToScreen("home")} onDirtyChange={setActiveFormDirty} />}
         {screen === "records" && (
           <RecordsScreen
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
             privateDisplayMode={privacySettings.privateDisplayMode}
             flash={flash}
             onDetail={setDetailItem}
@@ -1452,12 +1553,12 @@ function App() {
         )}
         {screen === "review" && (
           <ReviewHub
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
-            selfCareLogs={selfCareLogs}
-            thoughtNotes={thoughtNotes}
-            ifThenPlans={ifThenPlans}
-            ifThenLogs={ifThenLogs}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
+            selfCareLogs={visibleSelfCareLogs}
+            thoughtNotes={visibleThoughtNotes}
+            ifThenPlans={visibleIfThenPlans}
+            ifThenLogs={visibleIfThenLogs}
             onAnalysis={openAnalysis}
             onReport={openReport}
             onConsultation={openConsultation}
@@ -1466,17 +1567,17 @@ function App() {
             onIfThen={openIfThen}
           />
         )}
-        {screen === "analysis" && <Analysis dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} onIfThen={openIfThen} />}
-        {screen === "report" && <Report dailyRecords={dailyRecords} suddenLogs={suddenLogs} selfCareLogs={selfCareLogs} consultationNotes={consultationNotes} thoughtNotes={thoughtNotes} ifThenPlans={ifThenPlans} ifThenLogs={ifThenLogs} onOpenConsultation={openConsultation} />}
+        {screen === "analysis" && <Analysis dailyRecords={visibleDailyRecords} suddenLogs={visibleSuddenLogs} selfCareLogs={visibleSelfCareLogs} thoughtNotes={visibleThoughtNotes} ifThenPlans={visibleIfThenPlans} ifThenLogs={visibleIfThenLogs} onIfThen={openIfThen} />}
+        {screen === "report" && <Report dailyRecords={visibleDailyRecords} suddenLogs={visibleSuddenLogs} selfCareLogs={visibleSelfCareLogs} consultationNotes={visibleConsultationNotes} thoughtNotes={visibleThoughtNotes} ifThenPlans={visibleIfThenPlans} ifThenLogs={visibleIfThenLogs} onOpenConsultation={openConsultation} demoLabel={demoLabel} />}
         {screen === "calendar" && (
           <CalendarScreen
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
-            selfCareLogs={selfCareLogs}
-            thoughtNotes={thoughtNotes}
-            ifThenPlans={ifThenPlans}
-            ifThenLogs={ifThenLogs}
-            consultationNotes={consultationNotes}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
+            selfCareLogs={visibleSelfCareLogs}
+            thoughtNotes={visibleThoughtNotes}
+            ifThenPlans={visibleIfThenPlans}
+            ifThenLogs={visibleIfThenLogs}
+            consultationNotes={visibleConsultationNotes}
             privateDisplayMode={privacySettings.privateDisplayMode}
             onEditDaily={openDailyForDate}
             onAddDaily={openDailyForDate}
@@ -1487,8 +1588,8 @@ function App() {
         )}
         {screen === "selfcare" && (
           <SelfCareScreen
-            plans={selfCarePlans}
-            logs={selfCareLogs}
+            plans={visibleSelfCarePlans}
+            logs={visibleSelfCareLogs}
             flash={flash}
             onSavePlan={saveSelfCarePlan}
             onDeletePlan={(id) => setPendingDelete({ kind: "selfcare", id })}
@@ -1503,13 +1604,13 @@ function App() {
         )}
         {screen === "consultation" && (
           <ConsultationScreen
-            dailyRecords={dailyRecords}
-            suddenLogs={suddenLogs}
-            selfCareLogs={selfCareLogs}
-            ifThenPlans={ifThenPlans}
-            ifThenLogs={ifThenLogs}
-            thoughtNotes={thoughtNotes}
-            notes={consultationNotes}
+            dailyRecords={visibleDailyRecords}
+            suddenLogs={visibleSuddenLogs}
+            selfCareLogs={visibleSelfCareLogs}
+            ifThenPlans={visibleIfThenPlans}
+            ifThenLogs={visibleIfThenLogs}
+            thoughtNotes={visibleThoughtNotes}
+            notes={visibleConsultationNotes}
             flash={flash}
             onSave={saveConsultationNote}
             onDelete={(id) => setPendingDelete({ kind: "consultation", id })}
@@ -1521,7 +1622,7 @@ function App() {
         {screen === "thought" && (
           <ThoughtNotesScreen
             key={editingThought?.id || prefillThought?.sourceLogId || "thought-new"}
-            notes={thoughtNotes}
+            notes={visibleThoughtNotes}
             initial={editingThought}
             prefill={prefillThought}
             flash={flash}
@@ -1533,7 +1634,7 @@ function App() {
               setPrefillThought(null);
             }}
             onDelete={(id) => setPendingDelete({ kind: "thought", id })}
-            ifThenPlans={ifThenPlans}
+            ifThenPlans={visibleIfThenPlans}
             onIfThenDone={setLoggingIfThen}
             onCreateIfThen={openIfThenFromThought}
             onDirtyChange={setActiveFormDirty}
@@ -1541,8 +1642,8 @@ function App() {
         )}
         {screen === "ifthen" && (
           <IfThenScreen
-            plans={ifThenPlans}
-            logs={ifThenLogs}
+            plans={visibleIfThenPlans}
+            logs={visibleIfThenLogs}
             prefill={prefillIfThen}
             flash={flash}
             privateDisplayMode={privacySettings.privateDisplayMode}
@@ -1578,7 +1679,7 @@ function App() {
         {screen === "habit" && (
           <HabitSupportScreen
             settings={habitSettings}
-            dailyRecords={dailyRecords}
+            dailyRecords={visibleDailyRecords}
             privateDisplayMode={privacySettings.privateDisplayMode}
             flash={flash}
             onSave={updateHabitSettings}
@@ -1603,15 +1704,25 @@ function App() {
             ifThenLogs={ifThenLogs}
             consultationNotes={consultationNotes}
             thoughtNotes={thoughtNotes}
+            visibleDailyRecords={visibleDailyRecords}
+            visibleSuddenLogs={visibleSuddenLogs}
+            visibleSelfCarePlans={visibleSelfCarePlans}
+            visibleSelfCareLogs={visibleSelfCareLogs}
+            visibleIfThenPlans={visibleIfThenPlans}
+            visibleIfThenLogs={visibleIfThenLogs}
+            visibleConsultationNotes={visibleConsultationNotes}
+            visibleThoughtNotes={visibleThoughtNotes}
             privacySettings={privacySettings}
             habitSettings={habitSettings}
             reminderDismissals={reminderDismissals}
             displaySettings={displaySettings}
+            demoDisplaySettings={demoDisplaySettings}
             flash={flash}
             onImportRequest={setPendingImport}
             onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
             onAddSampleData={addSampleData}
             onDeleteSampleData={deleteSampleData}
+            onUpdateDemoDisplaySettings={updateDemoDisplaySettings}
             hasSampleData={hasSampleData}
           />
         )}
@@ -3511,15 +3622,25 @@ function DataManagement({
   ifThenLogs,
   consultationNotes,
   thoughtNotes,
+  visibleDailyRecords,
+  visibleSuddenLogs,
+  visibleSelfCarePlans,
+  visibleSelfCareLogs,
+  visibleIfThenPlans,
+  visibleIfThenLogs,
+  visibleConsultationNotes,
+  visibleThoughtNotes,
   privacySettings,
   habitSettings,
   reminderDismissals,
   displaySettings,
+  demoDisplaySettings,
   flash,
   onImportRequest,
   onDeleteAllRequest,
   onAddSampleData,
   onDeleteSampleData,
+  onUpdateDemoDisplaySettings,
   hasSampleData,
 }: {
   dailyRecords: DailyRecord[];
@@ -3530,15 +3651,25 @@ function DataManagement({
   ifThenLogs: IfThenLog[];
   consultationNotes: ConsultationNote[];
   thoughtNotes: ThoughtNote[];
+  visibleDailyRecords: DailyRecord[];
+  visibleSuddenLogs: SuddenLog[];
+  visibleSelfCarePlans: SelfCarePlan[];
+  visibleSelfCareLogs: SelfCareLog[];
+  visibleIfThenPlans: IfThenPlan[];
+  visibleIfThenLogs: IfThenLog[];
+  visibleConsultationNotes: ConsultationNote[];
+  visibleThoughtNotes: ThoughtNote[];
   privacySettings: PrivacySettings;
   habitSettings: HabitSettings;
   reminderDismissals: ReminderDismissal[];
   displaySettings: DisplaySettings;
+  demoDisplaySettings: DemoDisplaySettings;
   flash: string;
   onImportRequest: (backup: BackupData) => void;
   onDeleteAllRequest: () => void;
   onAddSampleData: () => void;
   onDeleteSampleData: () => void;
+  onUpdateDemoDisplaySettings: (settings: DemoDisplaySettings) => void;
   hasSampleData: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -3564,6 +3695,7 @@ function DataManagement({
     habitSettings,
     reminderDismissals,
     displaySettings,
+    demoDisplaySettings,
   };
 
   const handleImport = async (file: File | undefined) => {
@@ -3588,78 +3720,78 @@ function DataManagement({
   };
 
   const exportDailyCsv = () => {
-    if (!dailyRecords.length) {
+    if (!visibleDailyRecords.length) {
       setError("出力できる日々の記録がありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`daily-records-${today()}.csv`, toDailyCsv(dailyRecords), "text/csv;charset=utf-8");
+    downloadTextFile(`daily-records-${today()}.csv`, toDailyCsv(visibleDailyRecords), "text/csv;charset=utf-8");
     setError("");
     setMessage("日々の記録CSVを作成しました。");
   };
 
   const exportSuddenCsv = () => {
-    if (!suddenLogs.length) {
+    if (!visibleSuddenLogs.length) {
       setError("出力できる突発ログがありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`sudden-logs-${today()}.csv`, toSuddenCsv(suddenLogs), "text/csv;charset=utf-8");
+    downloadTextFile(`sudden-logs-${today()}.csv`, toSuddenCsv(visibleSuddenLogs), "text/csv;charset=utf-8");
     setError("");
     setMessage("突発ログCSVを作成しました。");
   };
 
   const exportSelfCareCsv = () => {
-    if (!selfCareLogs.length) {
+    if (!visibleSelfCareLogs.length) {
       setError("出力できるセルフケア記録がありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`self-care-logs-${today()}.csv`, toSelfCareCsv(selfCareLogs), "text/csv;charset=utf-8");
+    downloadTextFile(`self-care-logs-${today()}.csv`, toSelfCareCsv(visibleSelfCareLogs), "text/csv;charset=utf-8");
     setError("");
     setMessage("セルフケア記録CSVを作成しました。");
   };
 
   const exportConsultationCsv = () => {
-    if (!consultationNotes.length) {
+    if (!visibleConsultationNotes.length) {
       setError("出力できる相談メモがありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`consultation-notes-${today()}.csv`, toConsultationCsv(consultationNotes), "text/csv;charset=utf-8");
+    downloadTextFile(`consultation-notes-${today()}.csv`, toConsultationCsv(visibleConsultationNotes), "text/csv;charset=utf-8");
     setError("");
     setMessage("相談メモCSVを作成しました。");
   };
 
   const exportThoughtCsv = () => {
-    if (!thoughtNotes.length) {
+    if (!visibleThoughtNotes.length) {
       setError("出力できる思考メモがありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`thought-notes-${today()}.csv`, toThoughtCsv(thoughtNotes), "text/csv;charset=utf-8");
+    downloadTextFile(`thought-notes-${today()}.csv`, toThoughtCsv(visibleThoughtNotes), "text/csv;charset=utf-8");
     setError("");
     setMessage("思考メモCSVを作成しました。");
   };
 
   const exportIfThenPlansCsv = () => {
-    if (!ifThenPlans.length) {
+    if (!visibleIfThenPlans.length) {
       setError("出力できるIf-Thenプランがありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`if-then-plans-${today()}.csv`, toIfThenPlansCsv(ifThenPlans), "text/csv;charset=utf-8");
+    downloadTextFile(`if-then-plans-${today()}.csv`, toIfThenPlansCsv(visibleIfThenPlans), "text/csv;charset=utf-8");
     setError("");
     setMessage("If-ThenプランCSVを作成しました。");
   };
 
   const exportIfThenLogsCsv = () => {
-    if (!ifThenLogs.length) {
+    if (!visibleIfThenLogs.length) {
       setError("出力できるIf-Then実行ログがありません。");
       setMessage("");
       return;
     }
-    downloadTextFile(`if-then-logs-${today()}.csv`, toIfThenLogsCsv(ifThenLogs), "text/csv;charset=utf-8");
+    downloadTextFile(`if-then-logs-${today()}.csv`, toIfThenLogsCsv(visibleIfThenLogs), "text/csv;charset=utf-8");
     setError("");
     setMessage("If-Then実行ログCSVを作成しました。");
   };
@@ -3704,10 +3836,36 @@ function DataManagement({
       <section className="section-block data-card sample-data-card">
         <div>
           <p className="eyebrow">開発・確認用</p>
-          <h2>サンプルデータ</h2>
+          <h2>サンプルデータ / デモモード</h2>
         </div>
-        <p className="soft-text">UIやカレンダー、ふり返り機能を確認するための架空データを追加できます。実際の記録ではありません。</p>
-        <p className="soft-text">現在の記録に追加されます。必要な場合は先にバックアップしてください。</p>
+        <p className="soft-text">サンプルデータを使って、カレンダー・グラフ・ふり返り機能の見え方を確認できます。実際の記録ではありません。</p>
+        <div className="demo-settings-grid">
+          <div className="demo-setting-row">
+            <span>
+              <strong>デモモード</strong>
+              <small>サンプル表示の状態を分かりやすくします。</small>
+            </span>
+            <button
+              className={`toggle-pill ${demoDisplaySettings.isDemoModeEnabled ? "on" : ""}`}
+              type="button"
+              onClick={() => onUpdateDemoDisplaySettings({ ...demoDisplaySettings, isDemoModeEnabled: !demoDisplaySettings.isDemoModeEnabled })}
+            >
+              {demoDisplaySettings.isDemoModeEnabled ? "ON" : "OFF"}
+            </button>
+          </div>
+          <Choice
+            label="表示モード"
+            options={["すべて表示", "実データのみ", "サンプルのみ"]}
+            value={demoModeLabel(demoDisplaySettings.mode)}
+            onChange={(value) => onUpdateDemoDisplaySettings({ ...demoDisplaySettings, mode: demoModeFromLabel(value) })}
+          />
+          <div className="demo-counts" aria-label="表示中の件数">
+            <Metric label="表示中の日々の記録" value={`${visibleDailyRecords.length}件`} />
+            <Metric label="表示中の突発ログ" value={`${visibleSuddenLogs.length}件`} />
+            <Metric label="サンプル件数" value={`${countSampleItems([dailyRecords, suddenLogs, selfCarePlans, selfCareLogs, ifThenPlans, ifThenLogs, consultationNotes, thoughtNotes])}件`} />
+          </div>
+        </div>
+        <p className="soft-text">現在の記録に追加されます。必要な場合は先にバックアップしてください。JSONバックアップには表示モードに関係なく保存済みデータを含めます。</p>
         {hasSampleData && <p className="sample-note">サンプルデータがあります。追加し直す場合は、既存のサンプルだけ入れ替えます。</p>}
         <div className="data-actions">
           <button className="secondary-btn no-margin" onClick={onAddSampleData}>1ヶ月分のサンプルデータを追加</button>
@@ -3938,7 +4096,7 @@ function SelfCareScreen({
                   <p className="label">{plan.category}</p>
                   <h2>{plan.title}</h2>
                 </div>
-                <span className="badge">マイプラン</span>
+                <div className="badge-stack"><SampleBadge item={plan} /><span className="badge">マイプラン</span></div>
               </div>
               {plan.memo && <p className="record-snippet">{plan.memo}</p>}
               <div className="card-actions">
@@ -4272,7 +4430,7 @@ function IfThenScreen({
                       <p className="label">{plan.category} ・ {plan.ease}</p>
                       <h2>{privateDisplayMode ? "プランあり" : plan.title}</h2>
                     </div>
-                    <span className="badge">{plan.isActive ? "有効" : "一時停止"}</span>
+                    <div className="badge-stack"><SampleBadge item={plan} /><span className="badge">{plan.isActive ? "有効" : "一時停止"}</span></div>
                   </div>
                   <div className="ifthen-flow">
                     <p><span>もし</span>{privateDisplayMode ? "内容は非表示です" : plan.ifText}</p>
@@ -4587,7 +4745,7 @@ function ConsultationScreen({
                     <p className="label">{targetLabel(note.target)} ・ {statusLabel(note.status)}</p>
                     <h2>{note.title}</h2>
                   </div>
-                  <span className="badge">{formatDateTime(note.updatedAt)}</span>
+                  <div className="badge-stack"><SampleBadge item={note} /><span className="badge">{formatDateTime(note.updatedAt)}</span></div>
                 </div>
                 <p className="record-snippet">{privateDisplayMode ? "メモは非表示です" : shortText(note.mainTopic || note.recentConcern || note.dontForgetMemo)}</p>
                 <div className="card-actions">
@@ -4873,7 +5031,7 @@ function ThoughtNotesScreen({
                     <p className="label">{note.date}</p>
                     <h2>{privateDisplayMode ? "思考メモあり" : shortText(note.situation || note.thought || "思考メモ")}</h2>
                   </div>
-                  <span className="badge">{formatScore(note.intensity)}</span>
+                  <div className="badge-stack"><SampleBadge item={note} /><span className="badge">{formatScore(note.intensity)}</span></div>
                 </div>
                 <TagList tags={note.thoughtTags} empty="思考タグなし" />
                 <div className="compact-metrics">
@@ -5011,7 +5169,7 @@ function RecordsScreen({
                   <p className="label">記録日</p>
                   <h2>{record.date}</h2>
                 </div>
-                <span className="badge">{record.weather}</span>
+                <div className="badge-stack"><SampleBadge item={record} /><span className="badge">{record.weather}</span></div>
               </div>
               <div className="compact-metrics">
                 <Metric label="気分" value={privateDisplayMode ? "記録あり" : formatScore(record.mood)} />
@@ -5042,7 +5200,7 @@ function RecordsScreen({
                   <p className="label">発生日時</p>
                   <h2>{formatDateTime(log.occurredAt)}</h2>
                 </div>
-                <span className="badge">突発ログ</span>
+                <div className="badge-stack"><SampleBadge item={log} /><span className="badge">突発ログ</span></div>
               </div>
               <TagList tags={log.stateTags} empty="状態タグなし" />
               <div className="compact-metrics">
@@ -5539,6 +5697,7 @@ function Report({
   ifThenPlans,
   ifThenLogs,
   onOpenConsultation,
+  demoLabel,
 }: {
   dailyRecords: DailyRecord[];
   suddenLogs: SuddenLog[];
@@ -5548,6 +5707,7 @@ function Report({
   ifThenPlans: IfThenPlan[];
   ifThenLogs: IfThenLog[];
   onOpenConsultation: () => void;
+  demoLabel?: string;
 }) {
   const [period, setPeriod] = useState(7);
   const [doctorMemo, setDoctorMemo] = useState("");
@@ -5664,6 +5824,7 @@ ${summary}`;
         <p className="eyebrow">共有用</p>
         <h1>レポート</h1>
       </header>
+      {demoLabel && <div className="demo-mode-chip inline">{demoLabel}</div>}
       {hasFewRecords && <div className="notice">記録が少ないため参考程度です。無理に分析せず、共有用の整理メモとして使えます。</div>}
       <Choice label="期間" options={["7日間", "14日間", "30日間"]} value={`${period}日間`} onChange={(value) => setPeriod(Number(value.replace("日間", "")))} />
       <TextArea label="相談時に伝えたいことメモ" value={doctorMemo} onChange={setDoctorMemo} />
@@ -5885,6 +6046,10 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function SampleBadge({ item }: { item: unknown }) {
+  return isSampleItem(item) ? <span className="sample-badge">サンプル</span> : null;
 }
 
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -7770,6 +7935,7 @@ function normalizeBackupData(data: unknown): BackupData {
       habitSettings: defaultHabitSettings(),
       reminderDismissals: [],
       displaySettings: defaultDisplaySettings(),
+      demoDisplaySettings: defaultDemoDisplaySettings(),
     };
   }
 
@@ -7787,6 +7953,7 @@ function normalizeBackupData(data: unknown): BackupData {
     habitSettings?: Partial<HabitSettings>;
     reminderDismissals?: Partial<ReminderDismissal>[];
     displaySettings?: Partial<DisplaySettings>;
+    demoDisplaySettings?: Partial<DemoDisplaySettings>;
     daily?: Partial<DailyRecord>[];
     sudden?: Partial<SuddenLog>[];
   };
@@ -7820,6 +7987,7 @@ function normalizeBackupData(data: unknown): BackupData {
     habitSettings: normalizeHabitSettings(source.habitSettings),
     reminderDismissals: Array.isArray(source.reminderDismissals) ? source.reminderDismissals.map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[] : [],
     displaySettings: normalizeDisplaySettings(source.displaySettings),
+    demoDisplaySettings: normalizeDemoDisplaySettings(source.demoDisplaySettings),
   };
 }
 
