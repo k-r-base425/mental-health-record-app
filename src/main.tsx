@@ -2331,9 +2331,14 @@ function Home({
         </button>
       </section>
 
-      <section className="section-block home-chart-card">
-        <div className="section-title-row">
-          <h2>気分の推移</h2>
+      <section className="section-block home-chart-card mood-trend-card">
+        <div className="mood-chart-head">
+          <div className="mood-chart-title">
+            <h2>気分の推移</h2>
+            {moodRange === "month" && (
+              <ViewSegment value={monthChartView} onChange={setMonthChartView} labels={{ bar: "バー", ring: "リング" }} />
+            )}
+          </div>
           <div className="segmented-mini" role="group" aria-label="気分の推移の期間">
             {[
               ["month", "月"],
@@ -2352,9 +2357,6 @@ function Home({
             ))}
           </div>
         </div>
-        {moodRange === "month" && (
-          <ViewSegment value={monthChartView} onChange={setMonthChartView} labels={{ bar: "バー", ring: "リング" }} />
-        )}
         <HomeTrendBars
           points={trendPoints}
           range={moodRange}
@@ -2512,6 +2514,7 @@ function HomeTrendBars({
         <p className="empty-box">{range === "day" ? "今日はまだ記録がありません。" : "この期間の気分記録はまだありません。記録が増えると見えやすくなります。"}</p>
       )}
       <div className={`home-bars range-${range}`} aria-label="気分の推移">
+        <ChartZoneLabels />
         {points.map((point, index) => {
           const isSelected = point.date === selectedDate;
           const shouldShowLabel = privateDisplayMode ? false : shouldShowTrendPointLabel(point, points, range, selectedDate);
@@ -2733,6 +2736,7 @@ function MetricTrendBars({
     <>
       {!hasValue && <p className="empty-box">この期間の記録はまだありません。記録が増えると見えやすくなります。</p>}
       <div className={`home-bars metric-bars range-${range} metric-bars-${metricType}`} aria-label="指標の推移">
+        {metricType === "mood" && <ChartZoneLabels />}
         {points.map((point, index) => {
           const isSelected = selectedDate ? point.date === selectedDate : Boolean(point.isActive);
           const shouldShowLabel = privateDisplayMode ? false : shouldShowTrendPointLabel(point, points, range, selectedDate);
@@ -2753,6 +2757,16 @@ function MetricTrendBars({
       </div>
       <TrendLegend metricType={metricType} />
     </>
+  );
+}
+
+function ChartZoneLabels() {
+  return (
+    <div className="chart-zone-labels" aria-hidden="true">
+      <span>高め<small>8-10</small></span>
+      <span>中間<small>4-7</small></span>
+      <span>低め<small>0-3</small></span>
+    </div>
   );
 }
 
@@ -6742,7 +6756,7 @@ function shouldShowTrendPointLabel(point: TrendPoint, points: TrendPoint[], rang
   const pointDay = Number(point.date.slice(8, 10));
   const isSelected = Boolean(selectedDate && point.date === selectedDate);
   if (isSelected) return true;
-  if (selectedDay && Math.abs(pointDay - selectedDay) <= 1) return false;
+  if (selectedDay && Math.abs(pointDay - selectedDay) <= 2) return false;
   const monthEnd = points.length;
   return shouldShowMonthlyDayLabel(pointDay, monthEnd, point.date);
 }
