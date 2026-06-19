@@ -328,7 +328,8 @@ const habitSettingsStorageKey = "habitSettings";
 const reminderDismissalsStorageKey = "reminderDismissals";
 const displaySettingsStorageKey = "displaySettings";
 const demoDisplaySettingsStorageKey = "demoDisplaySettings";
-const appVersion = "1.0.0";
+const appVersion = "0.1.0";
+const appUpdatedAt = "2026-06-19";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
@@ -520,7 +521,7 @@ function generateMonthlySampleData(): SampleDataBundle {
   const thoughtSeeds = [
     ["LINEの返信が遅い場面", "返信が遅い理由を考えすぎていた", "不安", 6, ["先のことを考えすぎる", "相手の気持ちを読みすぎる"], "確認できていることと想像を分けると少し見やすいかもしれない。"],
     ["予定が多い朝", "全部やらなきゃと思った", "焦り", 7, ["すべきが強くなる", "完璧にやろうとする"], "今日やることを1つ減らしてもよさそう。"],
-    ["小さな失敗のあと", "ひとつ失敗すると全部だめに感じた", "落ち込み", 6, ["一度のことを全部に広げる"], "一部の出来事として置いておけるかもしれない。"],
+    ["小さなつまずきのあと", "ひとつつまずくと全部だめに感じた", "落ち込み", 6, ["一度のことを全部に広げる"], "一部の出来事として置いておけるかもしれない。"],
     ["SNSを見たあと", "人と比べて焦った", "焦り", 5, ["比べすぎる"], "自分のペースを確認する時間にする。"],
     ["寝る前", "明日のことを考え続けた", "そわそわ", 6, ["先のことを考えすぎる"], "今日は結論を出さないとメモして閉じる。"],
     ["作業前", "うまくできないかもしれないと思った", "緊張", 5, ["悪い方に決めつける"], "まずは5分だけ始める形にする。"],
@@ -3502,11 +3503,13 @@ function AboutScreen() {
         <h2>このアプリでできること</h2>
         <ul className="soft-list">
           <li>日々の状態を記録する</li>
-          <li>突発的な状態の変化を記録する</li>
-          <li>記録から見える傾向を確認する</li>
-          <li>セルフケアの候補を管理する</li>
-          <li>相談前のメモを整理する</li>
-          <li>データをバックアップする</li>
+          <li>状態の波やきっかけをふり返る</li>
+          <li>思考メモで考え方のくせに気づく</li>
+          <li>If-Thenプランで小さな行動を決める</li>
+          <li>セルフケアを試し、実行ログを残す</li>
+          <li>月間リングビューやふり返りコメントを見る</li>
+          <li>相談前のメモやレポートを整理する</li>
+          <li>JSONバックアップやCSV出力を使う</li>
         </ul>
       </section>
 
@@ -3517,17 +3520,50 @@ function AboutScreen() {
           <li>治療方針を決めること</li>
           <li>薬やサプリの服用を指示すること</li>
           <li>医師や専門家の代わりになること</li>
+          <li>緊急時の対応を代わりに行うこと</li>
         </ul>
       </section>
 
       <section className="section-block">
         <h2>データ保存について</h2>
-        <p className="soft-text">記録は現在お使いのブラウザ内に保存されます。共有URLを開いた人同士で記録が共有されるわけではありません。端末やブラウザが変わると記録は引き継がれないため、必要に応じてデータ管理からJSONバックアップを保存してください。</p>
+        <p className="soft-text">記録は現在お使いのブラウザ内に保存されます。共有URLを開いた人同士で記録が共有されるわけではありません。</p>
+        <p className="soft-text">端末を変更したり、ブラウザデータを削除した場合、記録が失われることがあります。大切な記録はJSONバックアップで保存してください。</p>
+        <p className="soft-text">このアプリは外部サーバーへ記録を送信しない設計です。ただし、利用環境によってはブラウザや端末側の管理に依存します。</p>
+      </section>
+
+      <section className="section-block">
+        <h2>デモモードについて</h2>
+        <p className="soft-text">デモモードでは、架空の1ヶ月分サンプルデータを使って、グラフ・リングビュー・ふり返りコメントの見え方を確認できます。</p>
+        <p className="soft-text">サンプルデータは手入力データと区別され、必要に応じてデータ管理画面からサンプルデータだけ削除できます。</p>
+      </section>
+
+      <section className="section-block">
+        <h2>バックアップについて</h2>
+        <p className="soft-text">JSONバックアップには、記録・表示設定・デモ設定などが含まれます。端末変更やブラウザデータ削除に備えたいときに利用してください。</p>
       </section>
 
       <section className="section-block">
         <h2>サポートが必要なとき</h2>
         <p className="soft-text">命に関わる可能性があると感じるときや、一人で抱えるのが難しいと感じるときは、すぐに119番、近くの救急外来、または信頼できる人に連絡してください。このアプリは医療機関や専門家の支援を代わりに行うものではありません。</p>
+      </section>
+
+      <section className="section-block">
+        <h2>バージョン情報</h2>
+        <div className="summary-list">
+          <Metric label="バージョン" value={`Self Compass v${appVersion}`} />
+          <Metric label="最終更新日" value={appUpdatedAt} />
+        </div>
+        <h3>簡易更新履歴</h3>
+        <ul className="soft-list">
+          <li>日々の記録</li>
+          <li>突発ログ</li>
+          <li>思考メモ</li>
+          <li>If-Thenプラン</li>
+          <li>セルフケア</li>
+          <li>月間リングビュー</li>
+          <li>デモモード</li>
+          <li>安定度スコア内訳</li>
+        </ul>
       </section>
     </section>
   );
@@ -4266,6 +4302,16 @@ function DataManagement({
             <button className="delete-action full-width" onClick={deleteAllDrafts}>下書きをすべて削除</button>
           </>
         )}
+      </section>
+
+      <section className="section-block data-card">
+        <h2>保存場所とバージョン</h2>
+        <p className="soft-text">記録は現在お使いのブラウザ内に保存されます。共有URLを開いた人同士で記録が共有されるわけではありません。</p>
+        <p className="soft-text">端末を変更したり、ブラウザデータを削除した場合、記録が失われることがあります。大切な記録はJSONバックアップで保存してください。</p>
+        <div className="summary-list">
+          <Metric label="バージョン" value={`v${appVersion}`} />
+          <Metric label="最終更新日" value={appUpdatedAt} />
+        </div>
       </section>
 
       <section className="section-block data-card danger-zone">
