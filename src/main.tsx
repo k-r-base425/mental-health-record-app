@@ -314,6 +314,8 @@ const ifThenLogsStorageKey = "ifThenLogs";
 const consultationNotesStorageKey = "consultationNotes";
 const thoughtNotesStorageKey = "thoughtNotes";
 const privacySettingsStorageKey = "privacySettings";
+const introCompletedStorageKey = "introCompleted";
+const introCompletedAtStorageKey = "introCompletedAt";
 const onboardingCompletedStorageKey = "onboardingCompleted";
 const onboardingCompletedAtStorageKey = "onboardingCompletedAt";
 const dailyDraftKey = "dailyRecordDraft";
@@ -868,6 +870,11 @@ function countSampleItems(groups: unknown[][]) {
   return groups.reduce((sum, group) => sum + group.filter(isSampleItem).length, 0);
 }
 
+function shouldShowIntroOnLoad() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("intro") === "1" || localStorage.getItem(introCompletedStorageKey) !== "true";
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
@@ -899,6 +906,7 @@ function App() {
   const [loggingIfThen, setLoggingIfThen] = useState<IfThenPlan | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(onboardingCompletedStorageKey) !== "true");
   const [onboardingMode, setOnboardingMode] = useState<"initial" | "guide">("initial");
+  const [showIntro, setShowIntro] = useState(shouldShowIntroOnLoad);
   const [activeFormDirty, setActiveFormDirty] = useState(false);
   const [flash, setFlash] = useState("");
   const hasSampleData = [
@@ -1214,11 +1222,13 @@ function App() {
     setScreen("data");
   };
 
-  const addSampleData = () => {
-    const confirmed = window.confirm(hasSampleData
-      ? "すでにサンプルデータがあります。既存のサンプルだけを入れ替えますか？手入力した記録は削除されません。"
-      : "1ヶ月分の架空サンプルデータを追加します。現在の記録は削除されませんが、データが増えます。続行しますか？");
-    if (!confirmed) return;
+  const addSampleData = (options?: { skipConfirm?: boolean; nextScreen?: Screen; message?: string }) => {
+    if (!options?.skipConfirm) {
+      const confirmed = window.confirm(hasSampleData
+        ? "すでにサンプルデータがあります。既存のサンプルだけを入れ替えますか？手入力した記録は削除されません。"
+        : "1ヶ月分の架空サンプルデータを追加します。現在の記録は削除されませんが、データが増えます。続行しますか？");
+      if (!confirmed) return;
+    }
 
     const sample = generateMonthlySampleData();
     const nextDaily = [...removeSampleItems(dailyRecords), ...sample.dailyRecords].sort((a, b) => b.date.localeCompare(a.date));
@@ -1249,11 +1259,11 @@ function App() {
     localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(nextIfThenLogs));
     localStorage.setItem(consultationNotesStorageKey, JSON.stringify(nextConsultation));
     localStorage.setItem(habitSettingsStorageKey, JSON.stringify(nextHabit));
-    setFlash("1ヶ月分のサンプルデータを追加しました");
+    setFlash(options?.message || "1ヶ月分のサンプルデータを追加しました");
     const nextDemo = normalizeDemoDisplaySettings({ mode: "sampleOnly", isDemoModeEnabled: true, updatedAt: nowIso() });
     setDemoDisplaySettings(nextDemo);
     localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(nextDemo));
-    setScreen("data");
+    setScreen(options?.nextScreen || "data");
   };
 
   const deleteSampleData = () => {
@@ -1429,6 +1439,37 @@ function App() {
     setScreen("about");
   };
 
+  const completeIntro = () => {
+    localStorage.setItem(introCompletedStorageKey, "true");
+    localStorage.setItem(introCompletedAtStorageKey, nowIso());
+    setShowIntro(false);
+  };
+
+  const startDemoFromIntro = () => {
+    const confirmed = window.confirm("架空のサンプルデータを使って、アプリの見え方を試します。現在の記録は削除されません。続行しますか？");
+    if (!confirmed) return;
+    completeIntro();
+    addSampleData({ skipConfirm: true, nextScreen: "home", message: "デモ表示に切り替えました" });
+  };
+
+  const startOwnRecordsFromIntro = () => {
+    completeIntro();
+    setFlash("");
+    setScreen("home");
+  };
+
+  const openGuideFromIntro = () => {
+    completeIntro();
+    setFlash("");
+    setOnboardingMode("guide");
+    setShowOnboarding(true);
+  };
+
+  const openIntro = () => {
+    setFlash("");
+    setShowIntro(true);
+  };
+
   const openHabit = () => {
     setFlash("");
     setScreen("habit");
@@ -1454,6 +1495,19 @@ function App() {
     setOnboardingMode("initial");
     setScreen("home");
   };
+
+  if (showIntro) {
+    return (
+      <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
+        <IntroScreen
+          onDemo={startDemoFromIntro}
+          onStart={startOwnRecordsFromIntro}
+          onGuide={openGuideFromIntro}
+          onClose={startOwnRecordsFromIntro}
+        />
+      </div>
+    );
+  }
 
   if (isLocked && privacySettings.isLockEnabled) {
     return <LockScreen settings={privacySettings} onUnlock={() => setIsLocked(false)} />;
@@ -1670,6 +1724,7 @@ function App() {
             onPrivacy={openPrivacy}
             onGuide={openGuide}
             onAbout={openAbout}
+            onIntro={openIntro}
             onHabit={openHabit}
             onDisplay={openDisplay}
             onIfThen={openIfThen}
@@ -1851,6 +1906,92 @@ function OnboardingGuide({ mode, onClose }: { mode: "initial" | "guide"; onClose
             <button className="primary-btn" onClick={() => setStep(step + 1)}>次へ</button>
           )}
         </div>
+      </section>
+    </main>
+  );
+}
+
+function IntroScreen({
+  onDemo,
+  onStart,
+  onGuide,
+  onClose,
+}: {
+  onDemo: () => void;
+  onStart: () => void;
+  onGuide: () => void;
+  onClose: () => void;
+}) {
+  const featureCards = [
+    ["日々の状態を記録する", "気分、睡眠、不安感、活動を短く残せます。"],
+    ["状態の波をふり返る", "月間グラフやリングで、記録上の波を見られます。"],
+    ["思考のくせに気づく", "頭に浮かんだ考えを、責めずに整理できます。"],
+    ["If-Thenプランを作る", "きっかけに合わせた小さな行動を決めておけます。"],
+    ["セルフケアを試す", "自分に合う整え方を、実行ログと一緒に残せます。"],
+    ["相談前にまとめる", "話したいことを相談時の材料として整理できます。"],
+  ];
+  const steps = [
+    "今日の状態を短く記録する",
+    "きっかけや思考のくせに気づく",
+    "If-Thenプランで小さな行動を決める",
+    "実行して整いやすさを記録する",
+    "月間ふり返りや相談前まとめに使う",
+  ];
+
+  return (
+    <main className="intro-screen">
+      <section className="intro-hero">
+        <div className="intro-hero-icon" aria-hidden="true">☘</div>
+        <p className="eyebrow">はじめに</p>
+        <h1>Self Compass</h1>
+        <p className="intro-lead">自分の状態を記録し、波や整いやすい行動をふり返るセルフケア記録アプリ</p>
+        <p className="soft-text">日々の記録、状態の波、思考メモ、If-Thenプラン、セルフケア、相談前まとめをひとつに整理できます。</p>
+        <div className="intro-actions">
+          <button className="primary-btn" onClick={onDemo} type="button">デモで試す</button>
+          <button className="secondary-btn no-margin" onClick={onStart} type="button">自分の記録を始める</button>
+          <button className="ghost-btn" onClick={onClose} type="button">あとで見る</button>
+        </div>
+      </section>
+
+      <section className="intro-section">
+        <h2>できること</h2>
+        <div className="intro-feature-grid">
+          {featureCards.map(([title, body]) => (
+            <article className="intro-feature-card" key={title}>
+              <strong>{title}</strong>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="intro-section">
+        <h2>使い方の流れ</h2>
+        <ol className="intro-step-list">
+          {steps.map((step, index) => (
+            <li key={step}>
+              <span>{index + 1}</span>
+              {step}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="intro-section intro-note-card">
+        <h2>データ保存について</h2>
+        <p>記録はお使いのブラウザ内に保存されます。共有URLを開いた人同士で記録が共有されるわけではありません。</p>
+        <p>端末変更やブラウザデータ削除に備えて、必要に応じてデータ管理からバックアップしてください。</p>
+      </section>
+
+      <section className="intro-section intro-note-card">
+        <h2>注意事項</h2>
+        <p>Self Compass は診断や治療を行うものではありません。記録は、自分の状態をふり返ったり、医師・カウンセラー・支援者に相談するときの参考情報として利用してください。</p>
+      </section>
+
+      <section className="intro-section intro-bottom-actions">
+        <button className="primary-btn" onClick={onDemo} type="button">デモで試す</button>
+        <button className="secondary-btn no-margin" onClick={onStart} type="button">自分の記録を始める</button>
+        <button className="secondary-btn no-margin" onClick={onGuide} type="button">使い方ガイドを見る</button>
       </section>
     </main>
   );
@@ -2339,7 +2480,6 @@ function HomeTrendBars({
     if (points.some((point) => point.date === selectedDate)) return;
     setSelectedDate(defaultActiveDate);
   }, [defaultActiveDate, points, selectedDate]);
-  const visiblePoints = points.filter((point) => point.showLabel || range !== "month");
   const hasValue = points.some((point) => isFiniteNumber(point.value));
   if (range === "month" && monthView === "ring") {
     return (
@@ -2374,7 +2514,7 @@ function HomeTrendBars({
       <div className={`home-bars range-${range}`} aria-label="気分の推移">
         {points.map((point, index) => {
           const isSelected = point.date === selectedDate;
-          const shouldShowLabel = privateDisplayMode ? false : isSelected || visiblePoints.includes(point);
+          const shouldShowLabel = privateDisplayMode ? false : shouldShowTrendPointLabel(point, points, range, selectedDate);
           return (
           <button
             className={[point.value === null ? "home-bar-wrap empty" : "home-bar-wrap", isSelected ? "selected" : ""].filter(Boolean).join(" ")}
@@ -2388,7 +2528,7 @@ function HomeTrendBars({
               className={isSelected ? "home-bar active" : "home-bar"}
               style={getMetricBarStyle("mood", point.value, 10, isSelected)}
             />
-            <small>{shouldShowLabel ? point.label : ""}</small>
+            <small className={isSelected ? "selected-label" : ""}>{shouldShowLabel ? point.label : ""}</small>
           </button>
           );
         })}
@@ -2595,7 +2735,7 @@ function MetricTrendBars({
       <div className={`home-bars metric-bars range-${range} metric-bars-${metricType}`} aria-label="指標の推移">
         {points.map((point, index) => {
           const isSelected = selectedDate ? point.date === selectedDate : Boolean(point.isActive);
-          const shouldShowLabel = privateDisplayMode ? false : isSelected || point.showLabel || range !== "month";
+          const shouldShowLabel = privateDisplayMode ? false : shouldShowTrendPointLabel(point, points, range, selectedDate);
           return (
             <button
               className={[point.value === null ? "home-bar-wrap empty" : "home-bar-wrap", isSelected ? "selected" : ""].filter(Boolean).join(" ")}
@@ -2606,7 +2746,7 @@ function MetricTrendBars({
               aria-label={`${point.label} ${point.value === null ? "記録なし" : `${point.value}`}`}
             >
               <div className={isSelected ? "home-bar active" : "home-bar"} style={getMetricBarStyle(metricType, point.value, max, isSelected)} />
-              <small>{shouldShowLabel ? point.label : ""}</small>
+              <small className={isSelected ? "selected-label" : ""}>{shouldShowLabel ? point.label : ""}</small>
             </button>
           );
         })}
@@ -2903,10 +3043,8 @@ function getMetricBarStyle(metricType: ChartMetricType, value: number | null, ma
   return {
     height,
     background: color,
-    boxShadow: isActive ? `0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 0 7px ${getMetricShadowColor(metricType, value)}` : undefined,
-    outline: isActive ? `2px solid ${color}` : undefined,
-    transform: isActive ? "scaleX(1.28)" : undefined,
-    transformOrigin: "bottom center",
+    boxShadow: isActive ? `0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 0 4px ${getMetricShadowColor(metricType, value)}` : undefined,
+    outline: isActive ? `1px solid ${color}` : undefined,
   };
 }
 
@@ -3092,6 +3230,7 @@ function MenuScreen({
   onPrivacy,
   onGuide,
   onAbout,
+  onIntro,
   onHabit,
   onDisplay,
   onIfThen,
@@ -3101,6 +3240,7 @@ function MenuScreen({
   onPrivacy: () => void;
   onGuide: () => void;
   onAbout: () => void;
+  onIntro: () => void;
   onHabit: () => void;
   onDisplay: () => void;
   onIfThen: () => void;
@@ -3125,6 +3265,7 @@ function MenuScreen({
           <button className="secondary-btn no-margin" onClick={onData}>データ管理</button>
           <button className="secondary-btn no-margin" onClick={onPrivacy}>プライバシー設定</button>
           <button className="secondary-btn no-margin" onClick={onGuide}>使い方ガイド</button>
+          <button className="secondary-btn no-margin" onClick={onIntro}>Self Compassについて</button>
           <button className="secondary-btn no-margin" onClick={onAbout}>アプリについて</button>
         </div>
       </section>
@@ -6592,7 +6733,18 @@ function buildMetricTrendPoints(metric: MetricType, range: TrendRange, dailyReco
 }
 
 function shouldShowMonthlyDayLabel(day: number, daysInMonth: number, date: string) {
-  return day === 1 || day % 10 === 0 || day === daysInMonth || date === today();
+  return day === 1 || day === 5 || day === 10 || day === 15 || day === 20 || day === 25 || day === daysInMonth || date === today();
+}
+
+function shouldShowTrendPointLabel(point: TrendPoint, points: TrendPoint[], range: TrendRange, selectedDate?: string) {
+  if (range !== "month") return true;
+  const selectedDay = selectedDate ? Number(selectedDate.slice(8, 10)) : null;
+  const pointDay = Number(point.date.slice(8, 10));
+  const isSelected = Boolean(selectedDate && point.date === selectedDate);
+  if (isSelected) return true;
+  if (selectedDay && Math.abs(pointDay - selectedDay) <= 1) return false;
+  const monthEnd = points.length;
+  return shouldShowMonthlyDayLabel(pointDay, monthEnd, point.date);
 }
 
 function markActiveTrendPoint(points: TrendPoint[], range: TrendRange) {
