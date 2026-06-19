@@ -588,6 +588,19 @@ h3 {
   filter: drop-shadow(0 18px 26px rgba(73, 183, 152, 0.12));
 }
 
+.mood-ring-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+.mood-ring-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 54%, white);
+  outline-offset: 5px;
+}
+
 .mood-ring-inner {
   width: 72%;
   aspect-ratio: 1;
@@ -629,6 +642,17 @@ h3 {
   color: var(--color-primary);
   font-style: normal;
   font-size: 1.5rem;
+}
+
+.mood-ring-inner em {
+  margin-top: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary-soft) 72%, white);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .home-summary-cards {
@@ -2866,6 +2890,152 @@ textarea {
 
 .modal-head h2 {
   margin: 0;
+}
+
+.icon-close {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-secondary);
+  color: var(--color-heading);
+  font-size: 1.35rem;
+  font-weight: 900;
+}
+
+.stability-modal {
+  width: 100%;
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 30px 30px 0 0;
+  background: var(--color-surface);
+  box-shadow: 0 -12px 34px rgba(32, 49, 45, 0.18);
+}
+
+.stability-modal-score {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--color-primary-soft) 62%, white);
+  color: var(--color-primary);
+}
+
+.stability-modal-score strong {
+  font-size: clamp(2.2rem, 12vw, 3.6rem);
+  line-height: 1;
+}
+
+.stability-modal-score span {
+  color: var(--color-text);
+  font-weight: 850;
+  line-height: 1.55;
+}
+
+.stability-detail-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stability-detail-item {
+  --item-color: var(--color-primary);
+  --item-soft: var(--color-primary-soft);
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--item-color) 18%, var(--color-border));
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--item-soft) 54%, white), var(--color-surface));
+}
+
+.stability-detail-item.sleep { --item-color: #5f91c8; --item-soft: #e7f1fb; }
+.stability-detail-item.anxiety,
+.stability-detail-item.thought,
+.stability-detail-item.sudden { --item-color: #8d7ab8; --item-soft: #f0eaf7; }
+.stability-detail-item.activity,
+.stability-detail-item.care { --item-color: #4fae8e; --item-soft: #e4f6ee; }
+.stability-detail-item.ifthen { --item-color: #159f8d; --item-soft: #e4f7f3; }
+
+.stability-detail-item > div:first-child {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stability-detail-item span {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.stability-detail-item strong {
+  min-width: 0;
+  color: var(--color-heading);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.stability-detail-item em {
+  justify-self: start;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--item-color) 12%, white);
+  color: var(--item-color);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.mini-gauge {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 54%, white);
+}
+
+.mini-gauge i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--item-color);
+}
+
+.stability-detail-item p,
+.stability-today-comment p,
+.stability-calculation-note p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.stability-today-comment,
+.stability-calculation-note {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 16%, var(--color-border));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--color-primary-soft) 42%, var(--color-surface));
+}
+
+.stability-today-comment h3 {
+  margin: 0 0 6px;
+  color: var(--color-heading);
+  font-size: 1rem;
+}
+
+.stability-calculation-note summary {
+  cursor: pointer;
+  color: var(--color-heading);
+  font-weight: 900;
 }
 
 .detail-list {

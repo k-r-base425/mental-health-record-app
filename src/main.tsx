@@ -2208,6 +2208,7 @@ function Home({
 }) {
   const [moodRange, setMoodRange] = useState<TrendRange>("week");
   const [monthChartView, setMonthChartView] = useState<MonthChartView>("bar");
+  const [showStabilityDetails, setShowStabilityDetails] = useState(false);
   const todayRecord = dailyRecords.find((record) => record.date === today());
   const todayPlans = selfCarePlans.slice(0, 3);
   const todayIfThenPlans = recommendIfThenPlans(ifThenPlans, ifThenLogs, suddenLogs, thoughtNotes).slice(0, 3);
@@ -2275,14 +2276,21 @@ function Home({
       )}
 
       <section className="mood-hero" aria-label="今日の状態スコア">
-        <div className="mood-ring" style={{ "--score": score ?? 0 } as React.CSSProperties}>
+        <button
+          className="mood-ring mood-ring-button"
+          style={{ "--score": score ?? 0 } as React.CSSProperties}
+          onClick={() => setShowStabilityDetails(true)}
+          type="button"
+          aria-label="安定度の内訳を見る"
+        >
           <div className="mood-ring-inner">
             <p>{privateDisplayMode ? "今日の状態" : score === null ? "記録待ち" : `今日の安定度 ${score}%`}</p>
             <strong>{privateDisplayMode ? "記録あり" : score ?? "-"}</strong>
             <span>{stability.isReference ? "参考スコア" : "Stability Score"}</span>
             <i>☘</i>
+            <em>内訳を見る</em>
           </div>
-        </div>
+        </button>
       </section>
 
       <section className="section-block stability-card" aria-label="安定度の内訳">
@@ -2442,7 +2450,177 @@ function Home({
       </section>
 
       <div className="home-disclaimer">このアプリは診断・治療・服薬指示を行いません。記録は相談時の参考情報として使えます。</div>
+      {showStabilityDetails && (
+        <StabilityDetailModal
+          date={today()}
+          stability={stability}
+          dailyRecord={todayRecord}
+          suddenLogs={suddenLogs}
+          thoughtNotes={thoughtNotes}
+          selfCareLogs={selfCareLogs}
+          ifThenLogs={ifThenLogs}
+          privateDisplayMode={privateDisplayMode}
+          onClose={() => setShowStabilityDetails(false)}
+        />
+      )}
     </section>
+  );
+}
+
+function StabilityDetailModal({
+  date,
+  stability,
+  dailyRecord,
+  suddenLogs,
+  thoughtNotes,
+  selfCareLogs,
+  ifThenLogs,
+  privateDisplayMode,
+  onClose,
+}: {
+  date: string;
+  stability: StabilityScore;
+  dailyRecord?: DailyRecord;
+  suddenLogs: SuddenLog[];
+  thoughtNotes: ThoughtNote[];
+  selfCareLogs: SelfCareLog[];
+  ifThenLogs: IfThenLog[];
+  privateDisplayMode: boolean;
+  onClose: () => void;
+}) {
+  const daySudden = suddenLogs.filter((log) => log.occurredAt.slice(0, 10) === date);
+  const dayThoughts = thoughtNotes.filter((note) => note.date === date);
+  const dayCare = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === date);
+  const dayIfThen = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === date);
+  const partScore = (key: StabilityPart["key"]) => stability.parts.find((part) => part.key === key)?.score ?? null;
+  const privateValue = (hasRecord: boolean) => hasRecord ? "記録あり" : "未入力";
+  const rows = [
+    {
+      key: "mood",
+      label: "気分 / 安定度",
+      value: dailyRecord ? `${formatScore(dailyRecord.mood)} / ${formatRingValue(stability.score, "%")}` : formatRingValue(stability.score, "%"),
+      has: Boolean(dailyRecord || stability.score !== null),
+      score: dailyRecord && isFiniteNumber(dailyRecord.mood) ? dailyRecord.mood * 10 : stability.score,
+      comment: dailyRecord ? "今日の状態をまとめる中心の記録です。" : "今日の記録があると見えやすくなります。",
+    },
+    {
+      key: "anxiety",
+      label: "不安感",
+      value: dailyRecord ? formatScore(dailyRecord.anxiety) : "未入力",
+      has: Boolean(dailyRecord && isFiniteNumber(dailyRecord.anxiety)),
+      score: dailyRecord ? scoreLowGood(dailyRecord.anxiety) : null,
+      comment: dailyRecord && isFiniteNumber(dailyRecord.anxiety) ? "今日は記録上の不安感を参考にしています。" : "この項目は今回の計算には含めていません。",
+    },
+    {
+      key: "sleep",
+      label: "睡眠",
+      value: dailyRecord ? `${formatSleepHours(dailyRecord.sleepHours)} / ${dailyRecord.sleepQuality}` : "未入力",
+      has: Boolean(dailyRecord && (hasSleepHours(dailyRecord) || dailyRecord.sleepQuality)),
+      score: partScore("sleep"),
+      comment: partScore("sleep") !== null ? "睡眠の記録が安定度を支えている可能性があります。" : "睡眠の記録があると見えやすくなります。",
+    },
+    {
+      key: "fatigue",
+      label: "疲労度",
+      value: dailyRecord ? formatScore(dailyRecord.fatigue) : "未入力",
+      has: Boolean(dailyRecord && isFiniteNumber(dailyRecord.fatigue)),
+      score: dailyRecord ? scoreLowGood(dailyRecord.fatigue) : null,
+      comment: dailyRecord && isFiniteNumber(dailyRecord.fatigue) ? "疲れの強さを参考にしています。" : "この項目は今回の計算には含めていません。",
+    },
+    {
+      key: "activity",
+      label: "活動",
+      value: activityScoreForDate(date, dailyRecord ? [dailyRecord] : [], dayCare, dayIfThen) === null ? "記録なし" : `${activityScoreForDate(date, dailyRecord ? [dailyRecord] : [], dayCare, dayIfThen)}回`,
+      has: activityScoreForDate(date, dailyRecord ? [dailyRecord] : [], dayCare, dayIfThen) !== null,
+      score: partScore("lifestyle"),
+      comment: partScore("lifestyle") !== null ? "外出・運動・小さな行動を参考にしています。" : "活動の記録があると参考になります。",
+    },
+    {
+      key: "sudden",
+      label: "突発ログ",
+      value: `${daySudden.length}件`,
+      has: daySudden.length > 0,
+      score: partScore("wave"),
+      comment: daySudden.length > 0 ? "状態の波の記録を参考にしています。" : "状態の波の記録はありません。",
+    },
+    {
+      key: "thought",
+      label: "思考メモ",
+      value: `${dayThoughts.length}件`,
+      has: dayThoughts.length > 0,
+      score: partScore("thought"),
+      comment: dayThoughts.length > 0 ? "思考メモの件数や感情の強さを参考にしています。" : "思考メモは記録されていません。",
+    },
+    {
+      key: "care",
+      label: "セルフケア",
+      value: `${dayCare.length}回`,
+      has: dayCare.length > 0,
+      score: partScore("selfcare"),
+      comment: dayCare.length > 0 ? "小さなセルフケアが記録されています。" : "実行ログがあると整いやすさを見やすくなります。",
+    },
+    {
+      key: "ifthen",
+      label: "If-Thenプラン",
+      value: `${dayIfThen.length}回`,
+      has: dayIfThen.length > 0,
+      score: partScore("ifthen"),
+      comment: dayIfThen.length > 0 ? "実行しやすさや整いやすさの記録があります。" : "If-Then実行ログがあると反映されます。",
+    },
+  ];
+  const visibleRows = rows.map((row) => ({
+    ...row,
+    value: privateDisplayMode ? privateValue(row.has) : row.value,
+  }));
+  const supportRows = rows.filter((row) => row.score !== null && row.score >= 68).map((row) => row.label);
+  const todayComment = stability.score === null
+    ? "今日はまだ記録が少なめです。記録が増えると、安定度の内訳が見えやすくなります。"
+    : supportRows.length
+      ? `今日は${supportRows.slice(0, 2).join("と")}が安定度を支えている可能性があります。`
+      : "入力されている記録をもとにした参考表示です。状態の波があった日も、あとから整いやすい行動を見つける材料になります。";
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="stability-detail-title">
+      <section className="stability-modal">
+        <div className="modal-head">
+          <div>
+            <p className="eyebrow">参考スコア</p>
+            <h2 id="stability-detail-title">安定度の内訳</h2>
+          </div>
+          <button className="icon-close" onClick={onClose} aria-label="閉じる" type="button">×</button>
+        </div>
+        <p className="soft-text">安定度は、今日の記録から見える状態の波や整いやすさをまとめた参考スコアです。診断や治療判断ではありません。</p>
+        <p className="tiny-note">未入力の項目は0として扱わず、入力されている記録をもとに計算しています。</p>
+        <div className="stability-modal-score">
+          <strong>{privateDisplayMode ? "非表示です" : stability.score === null ? "記録待ち" : `${stability.score}%`}</strong>
+          <span>{stability.isReference ? "今日は参考値です" : "記録上の参考情報です"}</span>
+        </div>
+        <div className="stability-detail-list">
+          {visibleRows.map((row) => (
+            <article className={`stability-detail-item ${row.key}`} key={row.key}>
+              <div>
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+              </div>
+              <em>{impactLabel(row.score, row.has)}</em>
+              <div className="mini-gauge" aria-label={`${row.label} ${row.score === null ? "記録なし" : `${Math.round(row.score)}%`}`}>
+                <i style={{ width: `${row.score ?? 0}%` }} />
+              </div>
+              <p>{privateDisplayMode ? "詳細は非表示です。" : row.comment}</p>
+            </article>
+          ))}
+        </div>
+        <section className="stability-today-comment">
+          <h3>今日のひとこと</h3>
+          <p>{privateDisplayMode ? "記録上の傾向があります。詳細は非表示です。" : todayComment}</p>
+        </section>
+        <details className="stability-calculation-note">
+          <summary>計算について</summary>
+          <p>安定度は、気分、不安感、睡眠、活動、セルフケア、If-Thenプランなどの記録をもとにした参考スコアです。未入力の項目は0点として扱わず、入力された記録だけを参考にしています。</p>
+          <p>このスコアは診断や治療判断ではなく、自分の状態をふり返るための目安です。</p>
+        </details>
+      </section>
+    </div>
   );
 }
 
@@ -3139,6 +3317,14 @@ function getTrendLegendItems(metricType: ChartMetricType) {
     { label: "低め", color: "#a4ded4" },
     { label: "未入力", color: "#dce5e2" },
   ];
+}
+
+function impactLabel(score: number | null, hasRecord: boolean) {
+  if (!hasRecord || score === null) return "記録なし";
+  if (score >= 78) return "支えている";
+  if (score >= 62) return "少し支えている";
+  if (score >= 45) return "参考表示";
+  return "影響は小さめ";
 }
 
 function RecordHub({ dailyRecords, suddenLogs, onDaily, onSudden, onRecords, onCalendar, onThought }: { dailyRecords: DailyRecord[]; suddenLogs: SuddenLog[]; onDaily: () => void; onSudden: () => void; onRecords: () => void; onCalendar: () => void; onThought: () => void }) {
