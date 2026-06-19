@@ -876,6 +876,11 @@ function shouldShowIntroOnLoad() {
   return params.get("intro") === "1" || localStorage.getItem(introCompletedStorageKey) !== "true";
 }
 
+function shouldOpenSafeModeOnLoad() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("safe") === "1";
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [dailyRecords, setDailyRecords] = useState<DailyRecord[]>(loadDailyRecords);
@@ -909,6 +914,7 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(onboardingCompletedStorageKey) !== "true");
   const [onboardingMode, setOnboardingMode] = useState<"initial" | "guide">("initial");
   const [showIntro, setShowIntro] = useState(shouldShowIntroOnLoad);
+  const [isSafeMode, setIsSafeMode] = useState(shouldOpenSafeModeOnLoad);
   const [activeFormDirty, setActiveFormDirty] = useState(false);
   const [flash, setFlash] = useState("");
   const hasSampleData = [
@@ -1495,6 +1501,14 @@ function App() {
     setScreen("metricDetail");
   };
 
+  const exitSafeMode = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("safe");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setIsSafeMode(false);
+    setScreen("data");
+  };
+
   const closeOnboarding = (markCompleted: boolean) => {
     if (markCompleted) {
       localStorage.setItem(onboardingCompletedStorageKey, "true");
@@ -1504,6 +1518,79 @@ function App() {
     setOnboardingMode("initial");
     setScreen("home");
   };
+
+  if (isLocked && privacySettings.isLockEnabled) {
+    return <LockScreen settings={privacySettings} onUnlock={() => setIsLocked(false)} />;
+  }
+
+  if (isSafeMode) {
+    return (
+      <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
+        <main className="screen safe-mode-screen">
+          <section className="section-block safe-mode-panel">
+            <div>
+              <p className="eyebrow">復旧用</p>
+              <h1>セーフモード</h1>
+            </div>
+            <p className="soft-text">画面表示に不具合があるときでも、バックアップ・インポート・サンプルデータ整理などの復旧操作を行うための表示です。</p>
+            <p className="soft-text">記録は削除されません。削除やインポートの操作は、確認画面で選んだ場合だけ実行されます。</p>
+            <button className="secondary-btn no-margin safe-mode-exit" type="button" onClick={exitSafeMode}>通常のデータ管理へ戻る</button>
+          </section>
+          <DataManagement
+            dailyRecords={dailyRecords}
+            suddenLogs={suddenLogs}
+            selfCarePlans={selfCarePlans}
+            selfCareLogs={selfCareLogs}
+            ifThenPlans={ifThenPlans}
+            ifThenLogs={ifThenLogs}
+            consultationNotes={consultationNotes}
+            thoughtNotes={thoughtNotes}
+            visibleDailyRecords={visibleDailyRecords}
+            visibleSuddenLogs={visibleSuddenLogs}
+            visibleSelfCarePlans={visibleSelfCarePlans}
+            visibleSelfCareLogs={visibleSelfCareLogs}
+            visibleIfThenPlans={visibleIfThenPlans}
+            visibleIfThenLogs={visibleIfThenLogs}
+            visibleConsultationNotes={visibleConsultationNotes}
+            visibleThoughtNotes={visibleThoughtNotes}
+            privacySettings={privacySettings}
+            habitSettings={habitSettings}
+            reminderDismissals={reminderDismissals}
+            displaySettings={displaySettings}
+            demoDisplaySettings={demoDisplaySettings}
+            flash={flash}
+            onImportRequest={setPendingImport}
+            onDeleteAllRequest={() => setPendingDelete({ kind: "all" })}
+            onAddSampleData={addSampleData}
+            onDeleteSampleData={deleteSampleData}
+            onUpdateDemoDisplaySettings={updateDemoDisplaySettings}
+            hasSampleData={hasSampleData}
+          />
+        </main>
+        {pendingDelete && (
+          <ConfirmDeleteModal
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={() => {
+              if (pendingDelete.kind === "daily") deleteDaily(pendingDelete.id);
+              if (pendingDelete.kind === "sudden") deleteSudden(pendingDelete.id);
+              if (pendingDelete.kind === "selfcare") deleteSelfCarePlan(pendingDelete.id);
+              if (pendingDelete.kind === "consultation") deleteConsultationNote(pendingDelete.id);
+              if (pendingDelete.kind === "thought") deleteThoughtNote(pendingDelete.id);
+              if (pendingDelete.kind === "ifthen") deleteIfThenPlan(pendingDelete.id);
+              if (pendingDelete.kind === "all") deleteAllData();
+            }}
+            isAllData={pendingDelete.kind === "all"}
+          />
+        )}
+        {pendingImport && (
+          <ConfirmImportModal
+            onCancel={() => setPendingImport(null)}
+            onConfirm={() => importBackup(pendingImport)}
+          />
+        )}
+      </div>
+    );
+  }
 
   if (showIntro) {
     return (
@@ -1516,10 +1603,6 @@ function App() {
         />
       </div>
     );
-  }
-
-  if (isLocked && privacySettings.isLockEnabled) {
-    return <LockScreen settings={privacySettings} onUnlock={() => setIsLocked(false)} />;
   }
 
   if (showOnboarding) {
@@ -7240,7 +7323,7 @@ function generateMonthlyReflection(
   const averageStability = nullableAverage(stabilityScores);
   const shortSleepRecords = daily.filter((record) => hasSleepHours(record) && Number(record.sleepHours) < 6);
   const shortSleepAnxiety = nullableAverage(shortSleepRecords.map((record) => record.anxiety).filter(isFiniteNumber));
-  const activeDays = daily.filter((record) => record.exercise !== "なし" || record.outing === "あり").length;
+  const activeDays = daily.filter((record) => record.exercise !== "なし" || record.wentOut === "あり").length;
   const settledCare = firstKey(countBy(care.filter((log) => log.result === "少し整った"), (log) => log.title));
   const ifThenFit = nullableAverage(ifThen.map((log) => log.fitScore).filter(isFiniteNumber));
   const ifThenEase = nullableAverage(ifThen.map((log) => log.easeScore).filter(isFiniteNumber));
@@ -8759,9 +8842,9 @@ function joinTags(tags: string[]) {
   return tags.length ? tags.join("、") : "未記入";
 }
 
-function shortText(text: string) {
+function shortText(text: string, maxLength = 42) {
   if (!text) return "未記入";
-  return text.length > 42 ? `${text.slice(0, 42)}...` : text;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
 function formatDateTime(iso: string) {
