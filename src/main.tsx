@@ -2531,7 +2531,7 @@ function HomeTrendBars({
               className={isSelected ? "home-bar active" : "home-bar"}
               style={getMetricBarStyle("mood", point.value, 10, isSelected)}
             />
-            <small className={isSelected ? "selected-label" : ""}>{shouldShowLabel ? point.label : ""}</small>
+            <small className={isSelected ? "selected-label" : ""}>{shouldShowLabel ? trendPointDisplayLabel(point, range) : ""}</small>
           </button>
           );
         })}
@@ -2750,7 +2750,7 @@ function MetricTrendBars({
               aria-label={`${point.label} ${point.value === null ? "記録なし" : `${point.value}`}`}
             >
               <div className={isSelected ? "home-bar active" : "home-bar"} style={getMetricBarStyle(metricType, point.value, max, isSelected)} />
-              <small className={isSelected ? "selected-label" : ""}>{shouldShowLabel ? point.label : ""}</small>
+              <small className={isSelected ? "selected-label" : ""}>{shouldShowLabel ? trendPointDisplayLabel(point, range) : ""}</small>
             </button>
           );
         })}
@@ -6759,6 +6759,11 @@ function shouldShowTrendPointLabel(point: TrendPoint, points: TrendPoint[], rang
   if (selectedDay && Math.abs(pointDay - selectedDay) <= 2) return false;
   const monthEnd = points.length;
   return shouldShowMonthlyDayLabel(pointDay, monthEnd, point.date);
+}
+
+function trendPointDisplayLabel(point: TrendPoint, range: TrendRange) {
+  if (range === "week") return String(Number(point.date.slice(8, 10)));
+  return point.label;
 }
 
 function markActiveTrendPoint(points: TrendPoint[], range: TrendRange) {

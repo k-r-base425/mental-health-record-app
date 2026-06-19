@@ -720,6 +720,7 @@ h3 {
 .segmented-mini {
   display: inline-flex;
   gap: 4px;
+  max-width: 100%;
   padding: 4px;
   border-radius: var(--radius-pill);
   background: var(--color-secondary);
@@ -732,7 +733,7 @@ h3 {
 
 .segmented-mini span,
 .segmented-mini button {
-  min-width: 42px;
+  min-width: clamp(36px, 10vw, 42px);
   padding: 7px 10px;
   border-radius: var(--radius-pill);
   text-align: center;
@@ -755,9 +756,13 @@ h3 {
 }
 
 .home-chart-card {
+  width: 100%;
+  max-width: 100%;
   padding: clamp(16px, 4vw, 20px);
   border-radius: 28px;
   min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .mood-trend-card {
@@ -770,6 +775,7 @@ h3 {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 12px;
+  min-width: 0;
 }
 
 .mood-chart-title {
@@ -785,6 +791,9 @@ h3 {
 
 .home-bars {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   height: 230px;
   display: flex;
   align-items: end;
@@ -799,7 +808,7 @@ h3 {
     repeating-linear-gradient(to top, transparent 0 44px, rgba(100, 125, 118, 0.11) 45px 46px),
     linear-gradient(to bottom, transparent, rgba(73, 183, 152, 0.03));
   border-radius: 22px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .chart-zone-labels {
@@ -837,6 +846,7 @@ h3 {
   background: transparent;
   padding: 0;
   min-width: 0;
+  max-width: 100%;
   flex: 1;
   height: 100%;
   display: grid;
@@ -844,6 +854,55 @@ h3 {
   gap: 8px;
   text-align: center;
   cursor: pointer;
+}
+
+.home-bars.range-week {
+  height: 210px;
+  gap: clamp(8px, 3vw, 14px);
+  padding-left: clamp(48px, 13vw, 58px);
+  padding-right: clamp(14px, 4vw, 20px);
+}
+
+.home-bars.range-week .home-bar-wrap {
+  grid-template-rows: 1fr 22px;
+  gap: 7px;
+}
+
+.home-bars.range-week .home-bar {
+  width: min(100%, 34px);
+  justify-self: center;
+}
+
+.home-bars.range-week .home-bar-wrap small {
+  font-size: clamp(0.7rem, 2.8vw, 0.82rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.home-bars.range-week .home-bar-wrap.selected small,
+.home-bars.range-week .home-bar-wrap small.selected-label {
+  min-width: 1.72rem;
+  min-height: 1.72rem;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 82%, white);
+  color: white;
+  font-size: clamp(0.72rem, 2.8vw, 0.84rem);
+  box-shadow: 0 4px 10px rgba(21, 159, 141, 0.18);
+}
+
+.home-bars.range-day {
+  height: 190px;
+  padding-left: clamp(48px, 13vw, 58px);
+  padding-right: clamp(18px, 5vw, 24px);
+}
+
+.home-bars.range-day .home-bar {
+  width: min(34%, 88px);
+  justify-self: center;
 }
 
 .home-bar-wrap:focus-visible {
@@ -988,6 +1047,16 @@ h3 {
 .mood-chart-title .segmented-mini button,
 .mood-chart-head > .segmented-mini button {
   min-width: clamp(38px, 10vw, 48px);
+}
+
+@media (max-width: 430px) {
+  .mood-chart-head {
+    grid-template-columns: 1fr;
+  }
+
+  .mood-chart-head > .segmented-mini {
+    justify-self: end;
+  }
 }
 
 .monthly-ring-view {
@@ -1235,6 +1304,9 @@ h3 {
 }
 
 .selected-day-card {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   display: grid;
   gap: 12px;
   margin: 10px 0 4px;
@@ -1244,6 +1316,7 @@ h3 {
   background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary-soft) 48%, var(--color-surface)), var(--color-surface) 78%);
   box-shadow: var(--shadow-subtle);
   min-width: 0;
+  overflow: hidden;
 }
 
 .selected-day-card.compact {
@@ -1272,6 +1345,9 @@ h3 {
 }
 
 .selected-day-grid {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
@@ -1279,6 +1355,8 @@ h3 {
 
 .selected-day-item {
   min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   display: grid;
   gap: 4px;
   padding: 10px 11px;
@@ -1288,9 +1366,11 @@ h3 {
 }
 
 .selected-day-item span {
+  min-width: 0;
   color: var(--color-muted);
   font-size: 0.72rem;
   font-weight: 850;
+  overflow-wrap: anywhere;
 }
 
 .selected-day-item strong {
@@ -1310,6 +1390,12 @@ h3 {
 
 @media (max-width: 374px) {
   .selected-day-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .selected-day-card.compact .selected-day-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -2425,8 +2511,15 @@ textarea {
 }
 
 .data-actions {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: grid;
   gap: 10px;
+}
+
+.data-actions > button {
+  max-width: 100%;
 }
 
 .sample-data-card {
