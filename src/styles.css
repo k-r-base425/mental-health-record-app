@@ -924,7 +924,7 @@ h3 {
 }
 
 .home-bars.range-week .home-bar-wrap {
-  grid-template-rows: 1fr 22px;
+  grid-template-rows: 1fr 30px;
   gap: 7px;
 }
 
@@ -1004,7 +1004,7 @@ h3 {
 }
 
 .home-bars.range-month .home-bar-wrap {
-  grid-template-rows: 1fr 18px;
+  grid-template-rows: 1fr 28px;
   gap: 5px;
 }
 
@@ -1051,9 +1051,9 @@ h3 {
   content: "";
   position: absolute;
   left: 50%;
-  bottom: 24px;
+  bottom: 34px;
   width: 1px;
-  height: calc(100% - 30px);
+  height: calc(100% - 40px);
   transform: translateX(-50%);
   border-left: 1px dashed color-mix(in srgb, var(--color-primary) 62%, transparent);
   pointer-events: none;
@@ -1116,6 +1116,11 @@ h3 {
 
   .mood-chart-head > .segmented-mini {
     justify-self: end;
+  }
+
+  .home-bars.range-month {
+    padding-left: clamp(40px, 11vw, 48px);
+    padding-right: clamp(12px, 4vw, 18px);
   }
 }
 
