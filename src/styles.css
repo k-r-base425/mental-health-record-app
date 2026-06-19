@@ -1122,6 +1122,14 @@ h3 {
     padding-left: clamp(40px, 11vw, 48px);
     padding-right: clamp(12px, 4vw, 18px);
   }
+
+  .stability-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .stability-row .stability-bar {
+    grid-column: 1 / -1;
+  }
 }
 
 .monthly-ring-view {
@@ -1610,6 +1618,8 @@ h3 {
 .stability-card {
   display: grid;
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stability-breakdown {
@@ -1618,6 +1628,7 @@ h3 {
 }
 
 .stability-row {
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(80px, 1fr) auto;
   gap: 10px;
@@ -2405,6 +2416,11 @@ textarea {
     min-height: 98px;
   }
 
+  .mini-plan {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
   .score-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -3038,11 +3054,13 @@ textarea {
 .mini-plan-list {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .mini-plan {
+  min-width: 0;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 14px;
@@ -3055,6 +3073,8 @@ textarea {
 .candidate-card strong {
   display: block;
   line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mini-plan span {
@@ -3063,6 +3083,8 @@ textarea {
   color: var(--color-muted);
   font-size: 0.84rem;
   font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .candidate-group {
