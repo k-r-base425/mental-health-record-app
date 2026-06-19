@@ -710,6 +710,11 @@ h3 {
   box-shadow: var(--shadow-soft);
 }
 
+.summary-tile > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .tile-icon {
   width: clamp(38px, 10vw, 48px);
   height: clamp(38px, 10vw, 48px);
@@ -725,12 +730,14 @@ h3 {
   color: var(--color-heading);
   font-size: clamp(0.86rem, 3.4vw, 1rem);
   font-weight: 900;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .summary-tile strong {
   color: var(--metric-color);
   font-size: clamp(1.12rem, 4.8vw, 1.65rem);
-  line-height: 1;
+  line-height: 1.08;
   overflow-wrap: anywhere;
 }
 
@@ -2406,7 +2413,7 @@ textarea {
 
   .home-summary-cards .summary-tile:last-child {
     grid-column: span 2;
-    min-height: 92px;
+    min-height: 104px;
   }
 
   .home-link-grid {
