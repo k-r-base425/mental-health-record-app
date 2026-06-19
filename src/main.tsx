@@ -897,6 +897,7 @@ function App() {
   const [editingThought, setEditingThought] = useState<ThoughtNote | null>(null);
   const [prefillThought, setPrefillThought] = useState<Partial<ThoughtNote> | null>(null);
   const [prefillIfThen, setPrefillIfThen] = useState<IfThenPrefill | null>(null);
+  const [ifThenReturnTarget, setIfThenReturnTarget] = useState<Screen>("menu");
   const [newDailyDate, setNewDailyDate] = useState<string | null>(null);
   const [newSuddenDate, setNewSuddenDate] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
@@ -1377,9 +1378,16 @@ function App() {
     setScreen("thought");
   };
 
-  const openIfThen = (prefill?: IfThenPrefill) => {
+  const getIfThenReturnTarget = (target?: Screen): Screen => {
+    if (target && target !== "ifthen") return target;
+    if (["home", "selfcare", "menu", "review", "analysis", "calendar", "report", "thought", "records", "habit"].includes(screen)) return screen;
+    return "menu";
+  };
+
+  const openIfThen = (prefill?: IfThenPrefill, returnTarget?: Screen) => {
     setFlash("");
     setPrefillIfThen(prefill || null);
+    setIfThenReturnTarget(getIfThenReturnTarget(returnTarget));
     setScreen("ifthen");
   };
 
@@ -1392,7 +1400,7 @@ function App() {
       category: "記録する",
       relatedStateTags: log.stateTags,
       memo: log.thoughts ? `突発ログから: ${log.thoughts}` : "",
-    });
+    }, "records");
   };
 
   const openIfThenFromThought = (note: ThoughtNote) => {
@@ -1402,7 +1410,7 @@ function App() {
       category: "思考を整理する",
       relatedThoughtTags: note.thoughtTags,
       memo: note.thought ? `思考メモから: ${note.thought}` : "",
-    });
+    }, "thought");
   };
 
   const openThoughtFromSudden = (log: SuddenLog) => {
@@ -1518,12 +1526,14 @@ function App() {
     return <OnboardingGuide mode={onboardingMode} onClose={() => closeOnboarding(onboardingMode === "initial")} />;
   }
 
+  const backTarget = screen === "ifthen" ? ifThenReturnTarget : backTargetForScreen(screen);
+
   return (
     <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
       <main className="screen">
         {demoLabel && <div className="demo-mode-chip">{demoLabel}</div>}
-        {backTargetForScreen(screen) && (
-          <button className="back-link" onClick={() => moveToScreen(backTargetForScreen(screen)!)} type="button">
+        {backTarget && (
+          <button className="back-link" onClick={() => moveToScreen(backTarget)} type="button">
             ← 戻る
           </button>
         )}
@@ -1549,7 +1559,7 @@ function App() {
             onSudden={openSudden}
             onCalendar={openCalendar}
             onThought={openThought}
-            onIfThen={openIfThen}
+            onIfThen={() => openIfThen(undefined, "home")}
             onSelfCare={() => moveToScreen("selfcare")}
             onHabit={openHabit}
             onMetricDetail={openMetricDetail}
@@ -1619,10 +1629,10 @@ function App() {
             onConsultation={openConsultation}
             onCalendar={openCalendar}
             onThought={openThought}
-            onIfThen={openIfThen}
+            onIfThen={() => openIfThen(undefined, "review")}
           />
         )}
-        {screen === "analysis" && <Analysis dailyRecords={visibleDailyRecords} suddenLogs={visibleSuddenLogs} selfCareLogs={visibleSelfCareLogs} thoughtNotes={visibleThoughtNotes} ifThenPlans={visibleIfThenPlans} ifThenLogs={visibleIfThenLogs} onIfThen={openIfThen} />}
+        {screen === "analysis" && <Analysis dailyRecords={visibleDailyRecords} suddenLogs={visibleSuddenLogs} selfCareLogs={visibleSelfCareLogs} thoughtNotes={visibleThoughtNotes} ifThenPlans={visibleIfThenPlans} ifThenLogs={visibleIfThenLogs} onIfThen={(prefill) => openIfThen(prefill, "analysis")} />}
         {screen === "report" && <Report dailyRecords={visibleDailyRecords} suddenLogs={visibleSuddenLogs} selfCareLogs={visibleSelfCareLogs} consultationNotes={visibleConsultationNotes} thoughtNotes={visibleThoughtNotes} ifThenPlans={visibleIfThenPlans} ifThenLogs={visibleIfThenLogs} onOpenConsultation={openConsultation} demoLabel={demoLabel} />}
         {screen === "calendar" && (
           <CalendarScreen
@@ -1637,7 +1647,7 @@ function App() {
             onEditDaily={openDailyForDate}
             onAddDaily={openDailyForDate}
             onAddSudden={openSuddenForDate}
-            onIfThen={openIfThen}
+            onIfThen={(prefill) => openIfThen(prefill, "calendar")}
             onSelfCare={() => moveToScreen("selfcare")}
           />
         )}
@@ -1649,9 +1659,10 @@ function App() {
             onSavePlan={saveSelfCarePlan}
             onDeletePlan={(id) => setPendingDelete({ kind: "selfcare", id })}
             onCareDone={setLoggingPlan}
-            onIfThen={openIfThen}
+            onIfThen={() => openIfThen(undefined, "selfcare")}
             onCreateIfThen={(plan) => {
               saveIfThenPlan(createIfThenFromSelfCare(plan));
+              setIfThenReturnTarget("selfcare");
               setScreen("ifthen");
             }}
             onDirtyChange={setActiveFormDirty}
@@ -1728,7 +1739,7 @@ function App() {
             onIntro={openIntro}
             onHabit={openHabit}
             onDisplay={openDisplay}
-            onIfThen={openIfThen}
+            onIfThen={() => openIfThen(undefined, "menu")}
           />
         )}
         {screen === "about" && <AboutScreen />}
@@ -1740,7 +1751,7 @@ function App() {
             flash={flash}
             onSave={updateHabitSettings}
             onDaily={openDaily}
-            onIfThen={openIfThen}
+            onIfThen={() => openIfThen(undefined, "habit")}
           />
         )}
         {screen === "display" && (
@@ -7878,7 +7889,7 @@ function backTargetForScreen(screen: Screen): Screen | null {
   if (screen === "daily" || screen === "sudden") return null;
   if (screen === "records") return "recordHub";
   if (screen === "analysis" || screen === "report" || screen === "calendar" || screen === "thought") return "review";
-  if (screen === "ifthen") return "selfcare";
+  if (screen === "ifthen") return "menu";
   if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
   return null;
 }
