@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/mental-health-record
   workflow_dispatch:
 
 permissions:

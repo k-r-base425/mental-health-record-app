@@ -79,6 +79,15 @@ npm run build
 
 ## GitHub Pages
 
+公開URL:
+
+- アプリ: https://k-r-base425.github.io/mental-health-record-app/
+- トップ説明ページ: https://k-r-base425.github.io/mental-health-record-app/?intro=1
+- デモ確認: https://k-r-base425.github.io/mental-health-record-app/?demo=1
+- セーフモード: https://k-r-base425.github.io/mental-health-record-app/?safe=1
+
+表示が古い場合は、ブラウザの再読み込み、またはPWAを一度閉じて再起動してください。
+
 Vite の `base` は以下を前提にしています。
 
 ```ts

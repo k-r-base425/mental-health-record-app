@@ -1,4 +1,4 @@
-const CACHE_NAME = "self-compass-v1";
+const CACHE_NAME = "self-compass-v0.1.0-20260619";
 const BASE_PATH = "/mental-health-record-app/";
 const APP_SHELL = [
   BASE_PATH,
