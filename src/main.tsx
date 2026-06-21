@@ -329,7 +329,7 @@ const reminderDismissalsStorageKey = "reminderDismissals";
 const displaySettingsStorageKey = "displaySettings";
 const demoDisplaySettingsStorageKey = "demoDisplaySettings";
 const appVersion = "0.1.0";
-const appUpdatedAt = "2026-06-19";
+const appUpdatedAt = "2026-06-21";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
@@ -3658,10 +3658,24 @@ function AboutScreen() {
           <li>突発ログ</li>
           <li>思考メモ</li>
           <li>If-Thenプラン</li>
-          <li>セルフケア</li>
-          <li>月間リングビュー</li>
-          <li>デモモード</li>
+          <li>セルフケア / マイプラン</li>
+          <li>相談ノート</li>
+          <li>安定度スコア</li>
           <li>安定度スコア内訳</li>
+          <li>月間カレンダー</li>
+          <li>月間リングビュー</li>
+          <li>月間ふり返りコメント</li>
+          <li>グラフの月 / 週 / 日切り替え</li>
+          <li>グラフ選択日の詳細カード</li>
+          <li>デモモード</li>
+          <li>サンプルデータ</li>
+          <li>JSONバックアップ / インポート</li>
+          <li>CSV出力</li>
+          <li>プライバシー設定</li>
+          <li>簡易ロック</li>
+          <li>セーフモード</li>
+          <li>公開用トップ説明ページ</li>
+          <li>PWA対応</li>
         </ul>
       </section>
     </section>
