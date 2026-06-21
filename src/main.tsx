@@ -689,28 +689,41 @@ const onboardingSteps = [
   },
 ];
 
-function readStorage<T>(key: string): T[] {
+function safeParseJson<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
   try {
-    return JSON.parse(localStorage.getItem(key) || "[]") as T[];
+    return JSON.parse(raw) as T;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
+function saveJson<T>(key: string, value: T) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function loadJsonArray<T>(key: string): T[] {
+  const parsed = safeParseJson<unknown>(localStorage.getItem(key), []);
+  return Array.isArray(parsed) ? parsed as T[] : [];
+}
+
+function loadJsonObject<T extends object>(key: string, fallback: T): Partial<T> {
+  const parsed = safeParseJson<unknown>(localStorage.getItem(key), fallback);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Partial<T> : fallback;
+}
+
+function readStorage<T>(key: string): T[] {
+  return loadJsonArray<T>(key);
+}
+
 function readDraft<T>(key: string): DraftEnvelope<T> | null {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as DraftEnvelope<T>;
-    return parsed?.data ? parsed : null;
-  } catch {
-    return null;
-  }
+  const parsed = safeParseJson<DraftEnvelope<T> | null>(localStorage.getItem(key), null);
+  return parsed?.data ? parsed : null;
 }
 
 function writeDraft<T>(key: string, formType: string, data: T) {
   const draft: DraftEnvelope<T> = { formType, data, updatedAt: nowIso() };
-  localStorage.setItem(key, JSON.stringify(draft));
+  saveJson(key, draft);
 }
 
 function removeDraft(key: string) {
@@ -726,95 +739,74 @@ function listDrafts() {
 
 function loadDailyRecords() {
   const records = readStorage<Partial<DailyRecord>>(dailyStorageKey).map(normalizeDailyRecord);
-  localStorage.setItem(dailyStorageKey, JSON.stringify(records));
+  saveJson(dailyStorageKey, records);
   return records;
 }
 
 function loadSuddenLogs() {
   const logs = readStorage<Partial<SuddenLog>>(suddenStorageKey).map(normalizeSuddenLog);
-  localStorage.setItem(suddenStorageKey, JSON.stringify(logs));
+  saveJson(suddenStorageKey, logs);
   return logs;
 }
 
 function loadSelfCarePlans() {
   const plans = readStorage<Partial<SelfCarePlan>>(selfCarePlansStorageKey).map(normalizeSelfCarePlan);
-  localStorage.setItem(selfCarePlansStorageKey, JSON.stringify(plans));
+  saveJson(selfCarePlansStorageKey, plans);
   return plans;
 }
 
 function loadSelfCareLogs() {
   const logs = readStorage<Partial<SelfCareLog>>(selfCareLogsStorageKey).map(normalizeSelfCareLog);
-  localStorage.setItem(selfCareLogsStorageKey, JSON.stringify(logs));
+  saveJson(selfCareLogsStorageKey, logs);
   return logs;
 }
 
 function loadIfThenPlans() {
   const plans = readStorage<Partial<IfThenPlan>>(ifThenPlansStorageKey).map(normalizeIfThenPlan);
-  localStorage.setItem(ifThenPlansStorageKey, JSON.stringify(plans));
+  saveJson(ifThenPlansStorageKey, plans);
   return plans;
 }
 
 function loadIfThenLogs() {
   const logs = readStorage<Partial<IfThenLog> & { result?: SelfCareResult }>(ifThenLogsStorageKey).map(normalizeIfThenLog);
-  localStorage.setItem(ifThenLogsStorageKey, JSON.stringify(logs));
+  saveJson(ifThenLogsStorageKey, logs);
   return logs;
 }
 
 function loadConsultationNotes() {
   const notes = readStorage<Partial<ConsultationNote>>(consultationNotesStorageKey).map(normalizeConsultationNote);
-  localStorage.setItem(consultationNotesStorageKey, JSON.stringify(notes));
+  saveJson(consultationNotesStorageKey, notes);
   return notes;
 }
 
 function loadThoughtNotes() {
   const notes = readStorage<Partial<ThoughtNote>>(thoughtNotesStorageKey).map(normalizeThoughtNote);
-  localStorage.setItem(thoughtNotesStorageKey, JSON.stringify(notes));
+  saveJson(thoughtNotesStorageKey, notes);
   return notes;
 }
 
 function loadPrivacySettings() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(privacySettingsStorageKey) || "{}") as Partial<PrivacySettings>;
-    const settings = normalizePrivacySettings(parsed);
-    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  } catch {
-    const settings = defaultPrivacySettings();
-    localStorage.setItem(privacySettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  }
+  const settings = normalizePrivacySettings(loadJsonObject(privacySettingsStorageKey, defaultPrivacySettings()));
+  saveJson(privacySettingsStorageKey, settings);
+  return settings;
 }
 
 function loadHabitSettings() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(habitSettingsStorageKey) || "{}") as Partial<HabitSettings>;
-    const settings = normalizeHabitSettings(parsed);
-    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  } catch {
-    const settings = defaultHabitSettings();
-    localStorage.setItem(habitSettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  }
+  const settings = normalizeHabitSettings(loadJsonObject(habitSettingsStorageKey, defaultHabitSettings()));
+  saveJson(habitSettingsStorageKey, settings);
+  return settings;
 }
 
 function loadReminderDismissals() {
   const dismissals = readStorage<Partial<ReminderDismissal>>(reminderDismissalsStorageKey).map(normalizeReminderDismissal).filter(Boolean) as ReminderDismissal[];
-  localStorage.setItem(reminderDismissalsStorageKey, JSON.stringify(dismissals));
+  saveJson(reminderDismissalsStorageKey, dismissals);
   return dismissals;
 }
 
 function loadDisplaySettings() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(displaySettingsStorageKey) || "{}") as Partial<DisplaySettings>;
-    const settings = normalizeDisplaySettings(parsed);
-    localStorage.setItem(displaySettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  } catch {
-    const settings = defaultDisplaySettings();
-    localStorage.setItem(displaySettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  }
+  const settings = normalizeDisplaySettings(loadJsonObject(displaySettingsStorageKey, defaultDisplaySettings()));
+  saveJson(displaySettingsStorageKey, settings);
+  return settings;
 }
 
 function defaultDemoDisplaySettings(): DemoDisplaySettings {
@@ -831,16 +823,9 @@ function normalizeDemoDisplaySettings(settings?: Partial<DemoDisplaySettings>): 
 }
 
 function loadDemoDisplaySettings() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(demoDisplaySettingsStorageKey) || "{}") as Partial<DemoDisplaySettings>;
-    const settings = normalizeDemoDisplaySettings(parsed);
-    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  } catch {
-    const settings = defaultDemoDisplaySettings();
-    localStorage.setItem(demoDisplaySettingsStorageKey, JSON.stringify(settings));
-    return settings;
-  }
+  const settings = normalizeDemoDisplaySettings(loadJsonObject(demoDisplaySettingsStorageKey, defaultDemoDisplaySettings()));
+  saveJson(demoDisplaySettingsStorageKey, settings);
+  return settings;
 }
 
 function applyDemoDisplayMode<T>(items: T[], settings: DemoDisplaySettings) {
@@ -871,14 +856,17 @@ function countSampleItems(groups: unknown[][]) {
   return groups.reduce((sum, group) => sum + group.filter(isSampleItem).length, 0);
 }
 
-function shouldShowIntroOnLoad() {
+function hasUrlParam(name: string, value = "1") {
   const params = new URLSearchParams(window.location.search);
-  return params.get("intro") === "1" || localStorage.getItem(introCompletedStorageKey) !== "true";
+  return params.get(name) === value;
+}
+
+function shouldShowIntroOnLoad() {
+  return hasUrlParam("intro") || localStorage.getItem(introCompletedStorageKey) !== "true";
 }
 
 function shouldOpenSafeModeOnLoad() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("safe") === "1";
+  return hasUrlParam("safe");
 }
 
 function App() {
@@ -2831,21 +2819,45 @@ function HomeTrendBars({
   );
 }
 
-function ViewSegment({ value, onChange, labels }: { value: MonthChartView | CalendarView; onChange: (value: any) => void; labels: Record<string, string> }) {
+function SegmentControl<T extends string>({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  className = "",
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<{ value: T; label: string }>;
+  ariaLabel: string;
+  className?: string;
+}) {
   return (
-    <div className="segmented-mini view-segment" role="group" aria-label="表示形式">
-      {Object.entries(labels).map(([key, label]) => (
+    <div className={`segmented-mini ${className}`.trim()} role="group" aria-label={ariaLabel}>
+      {options.map((option) => (
         <button
-          className={value === key ? "active" : ""}
-          key={key}
-          onClick={() => onChange(key)}
+          className={value === option.value ? "active" : ""}
+          key={option.value}
+          onClick={() => onChange(option.value)}
           type="button"
-          aria-pressed={value === key}
+          aria-pressed={value === option.value}
         >
-          {label}
+          {option.label}
         </button>
       ))}
     </div>
+  );
+}
+
+function ViewSegment<T extends MonthChartView | CalendarView>({ value, onChange, labels }: { value: T; onChange: (value: T) => void; labels: Record<T, string> }) {
+  return (
+    <SegmentControl
+      value={value}
+      onChange={onChange}
+      options={Object.entries(labels).map(([key, label]) => ({ value: key as T, label: label as string }))}
+      ariaLabel="表示形式"
+      className="view-segment"
+    />
   );
 }
 
@@ -2967,23 +2979,16 @@ function MetricDetailScreen({
 
 function RangeSegment({ value, onChange }: { value: TrendRange; onChange: (value: TrendRange) => void }) {
   return (
-    <div className="segmented-mini" role="group" aria-label="表示期間">
-      {[
-        ["month", "月"],
-        ["week", "週"],
-        ["day", "日"],
-      ].map(([range, label]) => (
-        <button
-          className={value === range ? "active" : ""}
-          key={range}
-          onClick={() => onChange(range as TrendRange)}
-          type="button"
-          aria-pressed={value === range}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+    <SegmentControl
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "month", label: "月" },
+        { value: "week", label: "週" },
+        { value: "day", label: "日" },
+      ]}
+      ariaLabel="表示期間"
+    />
   );
 }
 
@@ -6463,33 +6468,57 @@ function DetailModal({ item, onClose, onCreateIfThen }: { item: DetailItem; onCl
   );
 }
 
-function ConfirmDeleteModal({ onCancel, onConfirm, isAllData = false }: { onCancel: () => void; onConfirm: () => void; isAllData?: boolean }) {
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  confirmClassName = "primary-btn",
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmClassName?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="confirm-modal">
-        <h2>{isAllData ? "すべて削除しますか？" : "削除しますか？"}</h2>
-        <p>{isAllData ? "保存されている記録をすべて削除します。この操作は元に戻せません。先にバックアップを取ることをおすすめします。" : "この記録を削除しますか？この操作は元に戻せません。"}</p>
+        <h2>{title}</h2>
+        <p>{message}</p>
         <div className="confirm-actions">
           <button className="secondary-action" onClick={onCancel}>キャンセル</button>
-          <button className="delete-action" onClick={onConfirm}>{isAllData ? "すべて削除" : "削除する"}</button>
+          <button className={confirmClassName} onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </div>
     </div>
   );
 }
 
+function ConfirmDeleteModal({ onCancel, onConfirm, isAllData = false }: { onCancel: () => void; onConfirm: () => void; isAllData?: boolean }) {
+  return (
+    <ConfirmDialog
+      title={isAllData ? "すべて削除しますか？" : "削除しますか？"}
+      message={isAllData ? "保存されている記録をすべて削除します。この操作は元に戻せません。先にバックアップを取ることをおすすめします。" : "この記録を削除しますか？この操作は元に戻せません。"}
+      confirmLabel={isAllData ? "すべて削除" : "削除する"}
+      confirmClassName="delete-action"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
+  );
+}
+
 function ConfirmImportModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="confirm-modal">
-        <h2>読み込みますか？</h2>
-        <p>現在の記録にバックアップデータを読み込みます。既存の記録は上書きされる可能性があります。続行しますか？</p>
-        <div className="confirm-actions">
-          <button className="secondary-action" onClick={onCancel}>キャンセル</button>
-          <button className="primary-btn" onClick={onConfirm}>読み込む</button>
-        </div>
-      </div>
-    </div>
+    <ConfirmDialog
+      title="読み込みますか？"
+      message="現在の記録にバックアップデータを読み込みます。既存の記録は上書きされる可能性があります。続行しますか？"
+      confirmLabel="読み込む"
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -7967,14 +7996,26 @@ function navGroup(screen: Screen) {
   return screen;
 }
 
+const staticBackTargets: Partial<Record<Screen, Screen | null>> = {
+  metricDetail: "home",
+  daily: null,
+  sudden: null,
+  records: "recordHub",
+  analysis: "review",
+  report: "review",
+  calendar: "review",
+  thought: "review",
+  ifthen: "menu",
+  consultation: "menu",
+  data: "menu",
+  privacy: "menu",
+  about: "menu",
+  habit: "menu",
+  display: "menu",
+};
+
 function backTargetForScreen(screen: Screen): Screen | null {
-  if (screen === "metricDetail") return "home";
-  if (screen === "daily" || screen === "sudden") return null;
-  if (screen === "records") return "recordHub";
-  if (screen === "analysis" || screen === "report" || screen === "calendar" || screen === "thought") return "review";
-  if (screen === "ifthen") return "menu";
-  if (screen === "consultation" || screen === "data" || screen === "privacy" || screen === "about" || screen === "habit" || screen === "display") return "menu";
-  return null;
+  return staticBackTargets[screen] ?? null;
 }
 
 function createConsultationDraft(): ConsultationNote {
