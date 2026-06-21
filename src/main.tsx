@@ -1625,6 +1625,7 @@ function App() {
             onCareDone={setLoggingPlan}
             onIfThenDone={setLoggingIfThen}
             onConsultation={openConsultation}
+            onMenu={() => moveToScreen("menu")}
             onLock={lockApp}
             onDaily={openDaily}
             onSudden={openSudden}
@@ -2252,6 +2253,7 @@ function Home({
   onDaily,
   onSudden,
   onConsultation,
+  onMenu,
   onLock,
   onCareDone,
   onIfThenDone,
@@ -2278,6 +2280,7 @@ function Home({
   onDaily: () => void;
   onSudden: () => void;
   onConsultation: () => void;
+  onMenu: () => void;
   onLock: () => void;
   onCareDone: (plan: SelfCarePlan) => void;
   onIfThenDone: (plan: IfThenPlan) => void;
@@ -2323,18 +2326,17 @@ function Home({
     + (todayRecord?.exercise && todayRecord.exercise !== "なし" ? 1 : 0)
     + todayCareCount
     + todayIfThenCount;
-  const careHint = privateDisplayMode
-    ? "今日のセルフケアのヒントがあります。"
-    : selfCarePlans[0]?.title || "深呼吸を3回して、今の気持ちにやさしく気づいてみましょう。";
+  const calendarDates = recentDateList(7);
+  const recordsByDate = new Map(dailyRecords.map((record) => [record.date, record]));
 
   return (
     <section className="home-screen reference-home">
       <header className="home-topbar">
-        <button className="round-icon-btn reference-leaf-button" onClick={onHabit} aria-label="習慣サポートを開く" type="button">♧</button>
+        <button className="reference-header-button reference-menu-button" onClick={onMenu} aria-label="メニューを開く" type="button"><span /><span /><span /></button>
         <div className="home-date" aria-label={`${today().slice(0, 4)}年 ${formatJapaneseDate(today())} ${weekdayLabel(today())}`}>
           <strong>{today().slice(0, 4)}年{formatJapaneseDate(today())} {weekdayShortLabel(today())}</strong>
         </div>
-        <button className="round-icon-btn reference-bell-button" onClick={onLock} aria-label="ロックする" type="button">♧</button>
+        <button className="reference-header-button reference-bell-button" onClick={onHabit} aria-label="リマインダー設定を開く" type="button"><span /></button>
       </header>
 
       {flash && <div className="success-message">{flash}</div>}
@@ -2346,25 +2348,28 @@ function Home({
 
       {showReminder && <button className="reference-reminder" onClick={onDaily} type="button">{habitSettings.reminderMessage || defaultReminderMessages[0]} <span>›</span></button>}
 
-      <section className="mood-hero reference-score-card" aria-label="今日の状態スコア">
+      <section className="reference-score-card-v2" aria-label="今日の状態スコア">
         <button
-          className="mood-ring mood-ring-button"
+          className="reference-score-content"
           style={{ "--score": score ?? 0 } as React.CSSProperties}
           onClick={() => setShowStabilityDetails(true)}
           type="button"
           aria-label="安定度の内訳を見る"
         >
-          <div className="mood-ring-inner">
-            <strong className={privateDisplayMode ? "private-score-label" : ""}>{privateDisplayMode ? "記録あり" : score ?? "-"}</strong>
-            <span>{privateDisplayMode ? "" : score === null ? "記録待ち" : "/100"}</span>
+          <span className="reference-score-label">今日の安定スコア</span>
+          <div className="reference-score-row">
+            <div className="reference-score-number">
+              <strong className={privateDisplayMode ? "private" : ""}>{privateDisplayMode ? "記録あり" : score ?? "-"}</strong>
+              {!privateDisplayMode && score !== null && <span>/100</span>}
+            </div>
+            <em>{privateDisplayMode ? "参考表示" : stabilityLabel}</em>
+          </div>
+          <div className="reference-score-progress" aria-hidden="true"><i /></div>
+          <div className="reference-score-note">
+            <p>{privateDisplayMode ? "記録上の傾向があります。詳細は非表示です。" : stabilityNote}</p>
+            <span aria-hidden="true">›</span>
           </div>
         </button>
-        <aside className="home-stability-insight" aria-label="今日の安定度について">
-          <span>今日の安定スコア</span>
-          <strong>{privateDisplayMode ? "記録あり" : stabilityLabel}</strong>
-          <p>{privateDisplayMode ? "記録上の傾向があります。詳細は非表示です。" : stabilityNote}</p>
-          <button onClick={() => setShowStabilityDetails(true)} type="button" aria-label="安定度の内訳を見る"><span aria-hidden="true">›</span></button>
-        </aside>
       </section>
 
       <section className="home-summary-cards" aria-label="今日のサマリー">
@@ -2375,13 +2380,13 @@ function Home({
           <em>{sleepStatus}</em>
         </button>
         <button className="summary-tile metric-summary-anxiety" onClick={() => onMetricDetail("anxiety")} type="button" aria-label="不安感詳細を見る">
-          <span className="tile-icon">♧</span>
+          <span className="tile-icon">☁</span>
           <span>不安感</span>
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : isFiniteNumber(anxietyValue) ? `${Math.round(anxietyValue)}/10` : "未入力"}</strong>
           <em>{anxietyStatus}</em>
         </button>
         <button className="summary-tile metric-summary-activity" onClick={() => onMetricDetail("activity")} type="button" aria-label="活動詳細を見る">
-          <span className="tile-icon">↟</span>
+          <span className="tile-icon">♨</span>
           <span>活動</span>
           <strong>{privateDisplayMode && activityCount > 0 ? "記録あり" : `${activityCount}回`}</strong>
           <em>{activityCount > 1 ? "活動あり" : activityCount === 1 ? "低め" : "記録なし"}</em>
@@ -2391,31 +2396,52 @@ function Home({
       <section className="section-block home-chart-card reference-trend-card">
         <div className="mood-chart-head">
           <h2>気分の推移（過去7日間）</h2>
-          <button className="reference-status-pill" onClick={onCalendar} type="button">{stabilityLabel} <span>›</span></button>
+          <button className="reference-score-selector" onClick={onCalendar} type="button">スコア <span>⌄</span></button>
         </div>
-        <HomeMoodLineChart points={trendPoints} privateDisplayMode={privateDisplayMode} />
+        <HomeMoodZoneChart points={trendPoints} privateDisplayMode={privateDisplayMode} />
       </section>
 
-      <section className="reference-primary-actions" aria-label="今月とプランのショートカット">
-        <button className="reference-primary-action monthly" onClick={onCalendar} type="button">
-          <span className="reference-action-icon ring-calendar" aria-hidden="true">▦</span>
-          <span><strong>今月のふりかえり</strong><small>{Number(today().slice(5, 7))}月のまとめを見る</small></span>
-          <i aria-hidden="true">›</i>
-        </button>
-        <button className="reference-primary-action ifthen" onClick={onIfThen} type="button">
-          <span className="reference-action-icon" aria-hidden="true">◎</span>
-          <span><strong>If-Thenプラン</strong><small>{privateDisplayMode ? "プランあり" : `${ifThenPlans.filter((plan) => plan.isActive).length}件のプランあり`}</small></span>
-          <i aria-hidden="true">›</i>
-        </button>
+      <section className="reference-now-section" aria-label="今すぐできること">
+        <h2>今すぐできること</h2>
+        <div className="reference-now-actions">
+          <button className="reference-now-action ifthen" onClick={onIfThen} type="button">
+            <span className="reference-now-icon">☾</span>
+            <span><strong>If-Thenプラン</strong><small>{privateDisplayMode ? "プランあり" : `${ifThenPlans.filter((plan) => plan.isActive).length}件のプラン`}</small></span>
+          </button>
+          <button className="reference-now-action selfcare" onClick={onSelfCare} type="button">
+            <span className="reference-now-icon">♥</span>
+            <span><strong>セルフケア</strong><small>{privateDisplayMode ? (selfCarePlans.length ? "候補あり" : "候補なし") : selfCarePlans.length ? `おすすめ${Math.min(selfCarePlans.length, 9)}選` : "候補を追加"}</small></span>
+          </button>
+          <button className="reference-now-action reflection" onClick={onDaily} type="button">
+            <span className="reference-now-icon">♨</span>
+            <span><strong>振り返りを書く</strong><small>3分でOK</small></span>
+          </button>
+        </div>
       </section>
 
-      <section className="section-block reference-care-card">
-        <h2>今日のセルフケアのヒント</h2>
-        <button className="reference-care-action" onClick={onSelfCare} type="button">
-          <span className="reference-care-leaf" aria-hidden="true">♧</span>
-          <strong>{careHint}</strong>
-          <span aria-hidden="true">›</span>
+      <section className="reference-today-calendar" aria-label="今日のカレンダー">
+        <button className="reference-calendar-title" onClick={onCalendar} type="button">
+          <strong>今日のカレンダー</strong><span aria-hidden="true">›</span>
         </button>
+        <div className="reference-calendar-days">
+          {calendarDates.map((date) => {
+            const record = recordsByDate.get(date);
+            const progress = isFiniteNumber(record?.mood) ? record!.mood! * 10 : null;
+            const isToday = date === today();
+            return (
+              <button
+                className={["reference-calendar-day", isToday ? "today" : "", progress === null ? "missing" : ""].filter(Boolean).join(" ")}
+                key={date}
+                onClick={onCalendar}
+                type="button"
+                aria-label={`${formatJapaneseDate(date)} ${progress === null ? "記録なし" : "記録あり"} カレンダーで見る`}
+              >
+                <span>{weekdayShortLabel(date)}</span>
+                <i style={{ "--day-progress": progress ?? 0 } as React.CSSProperties}>{Number(date.slice(8, 10))}</i>
+              </button>
+            );
+          })}
+        </div>
       </section>
       {showStabilityDetails && (
         <StabilityDetailModal
@@ -2434,51 +2460,29 @@ function Home({
   );
 }
 
-function HomeMoodLineChart({ points, privateDisplayMode }: { points: TrendPoint[]; privateDisplayMode: boolean }) {
-  const width = 300;
-  const height = 104;
-  const plotLeft = 30;
-  const plotRight = 292;
-  const plotTop = 10;
-  const plotBottom = 76;
-  const pointX = (index: number) => points.length <= 1 ? (plotLeft + plotRight) / 2 : plotLeft + (plotRight - plotLeft) * index / (points.length - 1);
-  const pointY = (value: number) => plotBottom - Math.max(0, Math.min(10, value)) / 10 * (plotBottom - plotTop);
-  const segments: string[][] = [];
-  let current: string[] = [];
-  points.forEach((point, index) => {
-    if (!isFiniteNumber(point.value)) {
-      if (current.length) segments.push(current);
-      current = [];
-      return;
-    }
-    current.push(`${pointX(index)},${pointY(point.value)}`);
-  });
-  if (current.length) segments.push(current);
-
+function HomeMoodZoneChart({ points, privateDisplayMode }: { points: TrendPoint[]; privateDisplayMode: boolean }) {
   return (
-    <div className="reference-line-chart" aria-label="過去7日間の気分の推移">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-hidden={privateDisplayMode}>
-        {[10, 5, 0].map((value) => {
-          const y = pointY(value);
-          return (
-            <g key={value}>
-              <line x1={plotLeft} x2={plotRight} y1={y} y2={y} className="reference-chart-grid" />
-              <text x="2" y={y + 3} className="reference-chart-axis">{privateDisplayMode ? "" : value}</text>
-            </g>
-          );
-        })}
-        {segments.map((segment, index) => (
-          <polyline key={index} points={segment.join(" ")} className="reference-chart-line" />
-        ))}
-        {points.map((point, index) => isFiniteNumber(point.value) ? (
-          <circle key={point.date} cx={pointX(index)} cy={pointY(point.value)} r="2.8" className="reference-chart-dot" />
-        ) : null)}
-        {points.map((point, index) => (
-          <text key={`${point.date}-label`} x={pointX(index)} y="98" textAnchor="middle" className="reference-chart-date">
-            {privateDisplayMode ? "" : `${Number(point.date.slice(5, 7))}/${Number(point.date.slice(8, 10))}`}
-          </text>
-        ))}
-      </svg>
+    <div className="reference-zone-chart" aria-label="過去7日間の気分の推移">
+      <div className="reference-zone-plot">
+        <div className="reference-zone-axis" aria-hidden="true"><span>100</span><span>50</span><span>0</span></div>
+        <div className="reference-zone-bars">
+          {points.map((point) => {
+            const value = isFiniteNumber(point.value) ? Math.max(0, Math.min(10, point.value)) : null;
+            const zone = value === null ? "missing" : value >= 8 ? "stable" : value >= 6 ? "steady" : value >= 4 ? "gentle" : "low";
+            return (
+              <div className={`reference-zone-bar-item ${zone}`} key={point.date}>
+                <i style={{ "--bar-height": `${value === null ? 8 : Math.max(12, value * 10)}%` } as React.CSSProperties} />
+                <span>{privateDisplayMode ? "" : `${Number(point.date.slice(5, 7))}/${Number(point.date.slice(8, 10))}`}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="reference-zone-legend" aria-label="気分ゾーンの凡例">
+        <span className="stable">安定ゾーン</span>
+        <span className="steady">やや不安定</span>
+        <span className="low">不安定</span>
+      </div>
     </div>
   );
 }
