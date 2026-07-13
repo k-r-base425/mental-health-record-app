@@ -1601,7 +1601,7 @@ function App() {
 
   return (
     <div className={`app-shell theme-${displaySettings.theme} font-${displaySettings.fontSize}`}>
-      <main className="screen">
+      <main className={screen === "home" ? "screen screen-home" : "screen"}>
         {demoLabel && <div className="demo-mode-chip">{demoLabel}</div>}
         {backTarget && (
           <button className="back-link" onClick={() => moveToScreen(backTarget)} type="button">
@@ -2289,41 +2289,52 @@ function Home({
   onMetricDetail: (metric: MetricType) => void;
   onDismissReminder: () => void;
 }) {
-  const [moodRange, setMoodRange] = useState<TrendRange>("week");
-  const [monthChartView, setMonthChartView] = useState<MonthChartView>("bar");
   const [showStabilityDetails, setShowStabilityDetails] = useState(false);
   const todayRecord = dailyRecords.find((record) => record.date === today());
-  const todayPlans = selfCarePlans.slice(0, 3);
-  const todayIfThenPlans = recommendIfThenPlans(ifThenPlans, ifThenLogs, suddenLogs, thoughtNotes).slice(0, 3);
-  const todayInsight = calculateInsights(dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs)[0];
-  const openNotes = consultationNotes.filter((note) => note.status !== "done");
-  const latestThought = [...thoughtNotes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   const showFirstUseHint = dailyRecords.length === 0 && suddenLogs.length === 0;
-  const habitSummary = getHabitSummary(dailyRecords);
   const showReminder = shouldShowHabitReminder(habitSettings, dailyRecords, reminderDismissals);
-  const showRestart = shouldShowRestartSupport(dailyRecords, reminderDismissals);
   const stability = calculateStabilityScore(today(), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs);
   const score = stability.score;
   const anxietyValue = todayRecord?.anxiety ?? nullableAverage(dailyRecords.slice(-7).map((record) => record.anxiety));
   const todayCareCount = selfCareLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
   const todayIfThenCount = ifThenLogs.filter((log) => log.createdAt.slice(0, 10) === today()).length;
-  const trendPoints = buildMoodTrendPoints(dailyRecords, moodRange);
-  const ringDays = useMemo(
-    () => buildDailyRingData(today().slice(0, 7), dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs),
-    [dailyRecords, suddenLogs, selfCareLogs, thoughtNotes, ifThenPlans, ifThenLogs],
-  );
-  const homeRingDays = ringDays.filter((day) => day.date <= today()).slice(-14);
+  const trendPoints = buildMoodTrendPoints(dailyRecords, "week");
+  const stabilityLabel = score === null ? "記録待ち" : score >= 80 ? "安定" : score >= 60 ? "やや安定" : score >= 40 ? "ゆらぎあり" : "ゆっくり整える";
+  const stabilityNote = score === null
+    ? "今日の記録を残すと、状態の目安を確認できます。"
+    : score >= 60
+      ? "ここ数日は安定しています。この調子でいきましょう。"
+      : "今日はゆっくり、自分に合うペースで過ごしましょう。";
+  const sleepStatus = !todayRecord || !isFiniteNumber(todayRecord.sleepHours)
+    ? "記録なし"
+    : todayRecord.sleepHours >= 7
+      ? "よく眠れた"
+      : todayRecord.sleepHours >= 6
+        ? "やや不足"
+        : "短め";
+  const anxietyStatus = !isFiniteNumber(anxietyValue)
+    ? "記録なし"
+    : anxietyValue <= 3
+      ? "落ち着いている"
+      : anxietyValue <= 6
+        ? "落ち着いている"
+        : "少し高め";
+  const activityCount = (todayRecord?.wentOut === "あり" ? 1 : 0)
+    + (todayRecord?.exercise && todayRecord.exercise !== "なし" ? 1 : 0)
+    + todayCareCount
+    + todayIfThenCount;
+  const careHint = privateDisplayMode
+    ? "今日のセルフケアのヒントがあります。"
+    : selfCarePlans[0]?.title || "深呼吸を3回して、今の気持ちにやさしく気づいてみましょう。";
 
   return (
-    <section className="home-screen">
+    <section className="home-screen reference-home">
       <header className="home-topbar">
-        <button className="round-icon-btn" onClick={onHabit} aria-label="習慣サポートを開く" type="button">☼</button>
+        <button className="round-icon-btn reference-leaf-button" onClick={onHabit} aria-label="習慣サポートを開く" type="button">♧</button>
         <div className="home-date" aria-label={`${today().slice(0, 4)}年 ${formatJapaneseDate(today())} ${weekdayLabel(today())}`}>
-          <span>{today().slice(0, 4)}</span>
-          <strong>{formatJapaneseDate(today())}</strong>
-          <span>{weekdayShortLabel(today())}</span>
+          <strong>{today().slice(0, 4)}年{formatJapaneseDate(today())} {weekdayShortLabel(today())}</strong>
         </div>
-        <button className="round-icon-btn" onClick={onLock} aria-label="ロックする" type="button">…</button>
+        <button className="round-icon-btn reference-bell-button" onClick={onLock} aria-label="ロックする" type="button">♧</button>
       </header>
 
       {flash && <div className="success-message">{flash}</div>}
@@ -2333,32 +2344,9 @@ function Home({
         </div>
       )}
 
-      {showReminder && (
-        <section className="section-block reminder-card">
-          <p className="label">やさしいリマインダー</p>
-          <h2>今日の記録を少しだけ残せます</h2>
-          <p className="soft-text">{habitSettings.reminderMessage || defaultReminderMessages[0]}</p>
-          <p className="soft-text">すべて入力しなくても大丈夫です。</p>
-          <div className="data-actions">
-            <button className="primary-btn" onClick={onDaily}>今日の記録へ</button>
-            <button className="secondary-btn no-margin" onClick={onDismissReminder}>今は表示しない</button>
-          </div>
-        </section>
-      )}
+      {showReminder && <button className="reference-reminder" onClick={onDaily} type="button">{habitSettings.reminderMessage || defaultReminderMessages[0]} <span>›</span></button>}
 
-      {!showReminder && showRestart && (
-        <section className="section-block reminder-card">
-          <p className="label">再開のメモ</p>
-          <h2>少し間が空いても大丈夫です</h2>
-          <p className="soft-text">今日の状態だけ、短く残すこともできます。</p>
-          <div className="data-actions">
-            <button className="primary-btn" onClick={onDaily}>今日の記録へ</button>
-            <button className="secondary-btn no-margin" onClick={onDismissReminder}>あとで</button>
-          </div>
-        </section>
-      )}
-
-      <section className="mood-hero" aria-label="今日の状態スコア">
+      <section className="mood-hero reference-score-card" aria-label="今日の状態スコア">
         <button
           className="mood-ring mood-ring-button"
           style={{ "--score": score ?? 0 } as React.CSSProperties}
@@ -2367,38 +2355,16 @@ function Home({
           aria-label="安定度の内訳を見る"
         >
           <div className="mood-ring-inner">
-            <p>{privateDisplayMode ? "今日の状態" : score === null ? "記録待ち" : `今日の安定度 ${score}%`}</p>
-            <strong>{privateDisplayMode ? "記録あり" : score ?? "-"}</strong>
-            <span>{stability.isReference ? "参考スコア" : "Stability Score"}</span>
-            <i>☘</i>
-            <em>内訳を見る</em>
+            <strong className={privateDisplayMode ? "private-score-label" : ""}>{privateDisplayMode ? "記録あり" : score ?? "-"}</strong>
+            <span>{privateDisplayMode ? "" : score === null ? "記録待ち" : "/100"}</span>
           </div>
         </button>
-      </section>
-
-      <section className="section-block stability-card" aria-label="安定度の内訳">
-        <div className="section-title-row">
-          <h2>安定度の内訳</h2>
-          <span className="soft-pill">{stability.isReference ? "参考値" : "記録上"}</span>
-        </div>
-        <p className="soft-text">{privateDisplayMode ? "内訳は非表示です。" : stability.note}</p>
-        {!privateDisplayMode && (
-          <div className="stability-breakdown">
-            {stability.parts.map((part) => (
-              <div className="stability-row" key={part.key}>
-                <div>
-                  <strong>{part.label}</strong>
-                  <span>{part.note}</span>
-                </div>
-                <div className="stability-bar" aria-label={`${part.label} ${part.score === null ? "記録なし" : `${part.score}%`}`}>
-                  <i style={{ width: `${part.score ?? 0}%` }} />
-                </div>
-                <em>{part.score === null ? "記録なし" : `${part.score}%`}</em>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="tiny-note">このスコアは診断や治療判断ではなく、記録上の参考情報です。</p>
+        <aside className="home-stability-insight" aria-label="今日の安定度について">
+          <span>今日の安定スコア</span>
+          <strong>{privateDisplayMode ? "記録あり" : stabilityLabel}</strong>
+          <p>{privateDisplayMode ? "記録上の傾向があります。詳細は非表示です。" : stabilityNote}</p>
+          <button onClick={() => setShowStabilityDetails(true)} type="button" aria-label="安定度の内訳を見る"><span aria-hidden="true">›</span></button>
+        </aside>
       </section>
 
       <section className="home-summary-cards" aria-label="今日のサマリー">
@@ -2406,133 +2372,51 @@ function Home({
           <span className="tile-icon">☾</span>
           <span>睡眠</span>
           <strong>{privateDisplayMode && todayRecord ? "記録あり" : todayRecord ? formatSleepHours(todayRecord.sleepHours) : "未入力"}</strong>
-          <em>詳細を見る ›</em>
+          <em>{sleepStatus}</em>
         </button>
         <button className="summary-tile metric-summary-anxiety" onClick={() => onMetricDetail("anxiety")} type="button" aria-label="不安感詳細を見る">
-          <span className="tile-icon">◌</span>
+          <span className="tile-icon">♧</span>
           <span>不安感</span>
-          <strong>{privateDisplayMode && todayRecord ? "記録あり" : isFiniteNumber(anxietyValue) ? Math.round(anxietyValue * 10) : "-"}</strong>
-          <em>詳細を見る ›</em>
+          <strong>{privateDisplayMode && todayRecord ? "記録あり" : isFiniteNumber(anxietyValue) ? `${Math.round(anxietyValue)}/10` : "未入力"}</strong>
+          <em>{anxietyStatus}</em>
         </button>
         <button className="summary-tile metric-summary-activity" onClick={() => onMetricDetail("activity")} type="button" aria-label="活動詳細を見る">
-          <span className="tile-icon">{todayIfThenCount > 0 ? "↗" : "♧"}</span>
-          <span>{todayIfThenCount > 0 ? "If-Then" : "活動"}</span>
-          <strong>{privateDisplayMode && (todayCareCount > 0 || todayIfThenCount > 0) ? "記録あり" : todayIfThenCount > 0 ? `${todayIfThenCount}回` : `${todayCareCount}回`}</strong>
-          <em>詳細を見る ›</em>
+          <span className="tile-icon">↟</span>
+          <span>活動</span>
+          <strong>{privateDisplayMode && activityCount > 0 ? "記録あり" : `${activityCount}回`}</strong>
+          <em>{activityCount > 1 ? "活動あり" : activityCount === 1 ? "低め" : "記録なし"}</em>
         </button>
       </section>
 
-      <section className="section-block home-chart-card mood-trend-card">
+      <section className="section-block home-chart-card reference-trend-card">
         <div className="mood-chart-head">
-          <div className="mood-chart-title">
-            <h2>気分の推移</h2>
-            {moodRange === "month" && (
-              <ViewSegment value={monthChartView} onChange={setMonthChartView} labels={{ bar: "バー", ring: "リング" }} />
-            )}
-          </div>
-          <div className="segmented-mini" role="group" aria-label="気分の推移の期間">
-            {[
-              ["month", "月"],
-              ["week", "週"],
-              ["day", "日"],
-            ].map(([range, label]) => (
-              <button
-                className={moodRange === range ? "active" : ""}
-                key={range}
-                onClick={() => setMoodRange(range as TrendRange)}
-                type="button"
-                aria-pressed={moodRange === range}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <h2>気分の推移（過去7日間）</h2>
+          <button className="reference-status-pill" onClick={onCalendar} type="button">{stabilityLabel} <span>›</span></button>
         </div>
-        <HomeTrendBars
-          points={trendPoints}
-          range={moodRange}
-          monthView={monthChartView}
-          ringDays={homeRingDays}
-          dailyRecords={dailyRecords}
-          suddenLogs={suddenLogs}
-          thoughtNotes={thoughtNotes}
-          ifThenPlans={ifThenPlans}
-          ifThenLogs={ifThenLogs}
-          selfCareLogs={selfCareLogs}
-          privateDisplayMode={privateDisplayMode}
-          onOpenRingDate={onCalendar}
-          onDaily={onDaily}
-        />
-        <button className="wide-cta" onClick={onDaily}>今日のふりかえりを記録する <span>›</span></button>
+        <HomeMoodLineChart points={trendPoints} privateDisplayMode={privateDisplayMode} />
       </section>
 
-      <section className="section-block home-card home-card-habit">
-        <div className="section-title-row">
-          <h2>記録のペース</h2>
-          <span className="soft-pill">続け方</span>
-        </div>
-        <p className="soft-text">記録の間隔が空いても、また再開できます。</p>
-        <div className="summary-list">
-          <Metric label="今月" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.monthCount}日分`} />
-          <Metric label="直近7日" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.recent7Count}日`} />
-          <Metric label="今週" value={privateDisplayMode ? "記録状況あり" : `${habitSummary.weekCount}回`} />
-        </div>
-        <button className="secondary-btn" onClick={onHabit}>習慣サポートを見る</button>
+      <section className="reference-primary-actions" aria-label="今月とプランのショートカット">
+        <button className="reference-primary-action monthly" onClick={onCalendar} type="button">
+          <span className="reference-action-icon ring-calendar" aria-hidden="true">▦</span>
+          <span><strong>今月のふりかえり</strong><small>{Number(today().slice(5, 7))}月のまとめを見る</small></span>
+          <i aria-hidden="true">›</i>
+        </button>
+        <button className="reference-primary-action ifthen" onClick={onIfThen} type="button">
+          <span className="reference-action-icon" aria-hidden="true">◎</span>
+          <span><strong>If-Thenプラン</strong><small>{privateDisplayMode ? "プランあり" : `${ifThenPlans.filter((plan) => plan.isActive).length}件のプランあり`}</small></span>
+          <i aria-hidden="true">›</i>
+        </button>
       </section>
 
-      <section className="section-block home-card home-card-insight">
-        <h2>今日の気づき</h2>
-        {todayInsight ? (
-          <article className="mini-insight">
-            <strong>{todayInsight.title}</strong>
-            <p>{todayInsight.description}</p>
-          </article>
-        ) : (
-          <p className="soft-text">記録が増えると、睡眠・天気・外出などとの関係が見えやすくなります。</p>
-        )}
-        <button className="secondary-btn" onClick={onCalendar}>月間ふり返りを見る</button>
+      <section className="section-block reference-care-card">
+        <h2>今日のセルフケアのヒント</h2>
+        <button className="reference-care-action" onClick={onSelfCare} type="button">
+          <span className="reference-care-leaf" aria-hidden="true">♧</span>
+          <strong>{careHint}</strong>
+          <span aria-hidden="true">›</span>
+        </button>
       </section>
-
-      <section className="section-block home-card home-card-action">
-        <h2>今日の小さな一手</h2>
-        <p className="soft-text">今の状態に合わせて試せる小さな行動です。合いそうなものはIf-Thenプランとして続けられます。</p>
-        {todayPlans.length === 0 && todayIfThenPlans.length === 0 ? (
-          <p className="soft-text">セルフケアやIf-Thenプランから、自分に合いそうな行動を追加できます。</p>
-        ) : (
-          <div className="mini-plan-list">
-            {todayIfThenPlans.map((plan) => (
-              <article className="mini-plan ifthen-mini" key={plan.id}>
-                <div>
-                  <strong>{privateDisplayMode ? "If-Thenプランあり" : `${plan.ifText} → ${plan.thenText}`}</strong>
-                  <span>{plan.category} ・ {plan.ease}</span>
-                </div>
-                <button className="secondary-action" onClick={() => onIfThenDone(plan)}>実行した</button>
-              </article>
-            ))}
-            {todayPlans.slice(0, Math.max(0, 3 - todayIfThenPlans.length)).map((plan) => (
-              <article className="mini-plan" key={plan.id}>
-                <div>
-                  <strong>{plan.title}</strong>
-                  <span>{plan.category}</span>
-                </div>
-                <button className="secondary-action" onClick={() => onCareDone(plan)}>できた</button>
-              </article>
-            ))}
-          </div>
-        )}
-        <button className="secondary-btn" onClick={onIfThen}>If-Thenプランを作る</button>
-      </section>
-
-      <section className="home-link-grid">
-        <button className="home-link-card home-card-sudden" onClick={onSudden}>突発ログ<span>状態の波を短く記録</span></button>
-        <button className="home-link-card home-card-thought" onClick={onThought}>思考メモ<span>{privateDisplayMode && latestThought ? "記録あり" : latestThought ? latestThought.date : "考えを一度置く"}</span></button>
-        <button className="home-link-card home-card-ifthen" onClick={onIfThen}>If-Then<span>{privateDisplayMode ? "プランあり" : `${ifThenPlans.filter((plan) => plan.isActive).length}件`}</span></button>
-        <button className="home-link-card home-card-consult" onClick={onConsultation}>相談ノート<span>{openNotes.length}件</span></button>
-        <button className="home-link-card home-card-care" onClick={onSelfCare}>セルフケア<span>{privateDisplayMode ? "プランあり" : `${selfCarePlans.length}件`}</span></button>
-        <button className="home-link-card home-card-lock" onClick={onLock}>ロック<span>表示を守る</span></button>
-      </section>
-
-      <div className="home-disclaimer">このアプリは診断・治療・服薬指示を行いません。記録は相談時の参考情報として使えます。</div>
       {showStabilityDetails && (
         <StabilityDetailModal
           date={today()}
@@ -2547,6 +2431,55 @@ function Home({
         />
       )}
     </section>
+  );
+}
+
+function HomeMoodLineChart({ points, privateDisplayMode }: { points: TrendPoint[]; privateDisplayMode: boolean }) {
+  const width = 300;
+  const height = 104;
+  const plotLeft = 30;
+  const plotRight = 292;
+  const plotTop = 10;
+  const plotBottom = 76;
+  const pointX = (index: number) => points.length <= 1 ? (plotLeft + plotRight) / 2 : plotLeft + (plotRight - plotLeft) * index / (points.length - 1);
+  const pointY = (value: number) => plotBottom - Math.max(0, Math.min(10, value)) / 10 * (plotBottom - plotTop);
+  const segments: string[][] = [];
+  let current: string[] = [];
+  points.forEach((point, index) => {
+    if (!isFiniteNumber(point.value)) {
+      if (current.length) segments.push(current);
+      current = [];
+      return;
+    }
+    current.push(`${pointX(index)},${pointY(point.value)}`);
+  });
+  if (current.length) segments.push(current);
+
+  return (
+    <div className="reference-line-chart" aria-label="過去7日間の気分の推移">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-hidden={privateDisplayMode}>
+        {[10, 5, 0].map((value) => {
+          const y = pointY(value);
+          return (
+            <g key={value}>
+              <line x1={plotLeft} x2={plotRight} y1={y} y2={y} className="reference-chart-grid" />
+              <text x="2" y={y + 3} className="reference-chart-axis">{privateDisplayMode ? "" : value}</text>
+            </g>
+          );
+        })}
+        {segments.map((segment, index) => (
+          <polyline key={index} points={segment.join(" ")} className="reference-chart-line" />
+        ))}
+        {points.map((point, index) => isFiniteNumber(point.value) ? (
+          <circle key={point.date} cx={pointX(index)} cy={pointY(point.value)} r="2.8" className="reference-chart-dot" />
+        ) : null)}
+        {points.map((point, index) => (
+          <text key={`${point.date}-label`} x={pointX(index)} y="98" textAnchor="middle" className="reference-chart-date">
+            {privateDisplayMode ? "" : `${Number(point.date.slice(5, 7))}/${Number(point.date.slice(8, 10))}`}
+          </text>
+        ))}
+      </svg>
+    </div>
   );
 }
 
